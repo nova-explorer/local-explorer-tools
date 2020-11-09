@@ -41,36 +41,46 @@ def qmatrix(ds):
 
         op_list.append(op)
     ds['p2_qm'] = xr.DataArray(op_list, coords=[ds.ts], dims=['ts'])
+    return op
+    # return ds
 
-    return ds
+def rdf(traj, cutoff_val=25, nb_bins=10):
+    bounds = traj.atoms.bounds.isel(ts=0).values
+    vol_cell = bounds[0] * bounds[1] * bounds[2]
 
-# def mcmillan(ds):
-#     return 0
-# def gz12(ds, ini_layer=35, direction='z'):
-#     return 0
-
-def rdf(ds, cutoff=25, nb_bins=100): ## Some infos are relevant to clusterings
-    bounds_x = ds.atoms.b_x1 - ds.atoms.b_x0
-    bounds_y = ds.atoms.b_y1 - ds.atoms.b_y0
-    bounds_z = ds.atoms.b_z1 - ds.atoms.b_z0
-    bounds = [ bounds_x.values[0], bounds_y.values[0], bounds_z.values[0] ]
-
-    positions = ds.vectors.cm.isel(ts=0).values
+    # données des centres de masses des ellipsoides
+    positions = traj.vectors.cm.isel(ts=0).values
+    # matrices de distance en x y et z
     dx = squareform(pdist(positions[ :,[0] ]))
     dy = squareform(pdist(positions[ :,[1] ]))
     dz = squareform(pdist(positions[ :,[2] ]))
 
+    # applique les PBC
     dx = np.where(dx >= bounds[0]/2, dx - bounds[0], dx)
     dy = np.where(dy >= bounds[1]/2, dy - bounds[1], dy)
-    dz = np.where(dz > bounds[2]/2, dz - bounds[2], dz)
+    dz = np.where(dz >= bounds[2]/2, dz - bounds[2], dz)
+    # combine les distances en x,y et z
+    distance = np.sqrt(dx**2 + dy**2 + dz**2)
 
-    distance = np.sqrt(dx**2 + dy **2 + dz**2)
+    cutoff = np.linspace(0, cutoff_val, nb_bins)
+    diff = cutoff[1] - cutoff[0]
+    N_ATOMS = 1800
+    CONSTANT = 4/3 * np.pi / vol_cell * N_ATOMS
 
     rdf = []
-    for d in distance:
-        d = d[d<=cutoff]
-        d = d[d!=0]
-        freq, bins= np.histogram(d, nb_bins)
-        rdf.append(freq)
+    mean_rdf = [0] * len(cutoff)
+    for i in distance:
+        bins = [0] * len(cutoff)
+        i = i[i<=cutoff_val]
+        i = i[i!=0]
+        for j in i:
+            for idd,d in enumerate(cutoff):
+                d_min = d - diff
+                d_max = d + diff
+                if d_min <= j < d_max:
+                    vfrac = CONSTANT * (d_max**3 - d_min**3)
+                    bins [idd] += 1 / vfrac
+                    mean_rdf [idd] += 1 / vfrac / N_ATOMS
+        rdf.append(bins)
 
-    return rdf
+    return rdf, mean_rdf, cutoff
