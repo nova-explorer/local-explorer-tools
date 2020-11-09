@@ -22,10 +22,12 @@ class trajectory():
         # delimiters = self.trim_to_types(self.full_traj, self.options.monomer_types['del']) ## needs testing
 
     def read_traj(self):
+        bounds = {'x':[], 'y':[], 'z':[]}
+        bounds_list = []
+        bounds_array = []
+        comp = ['x', 'y', 'z']
+
         nb_atoms = None
-        bound_dict = {}
-        bounds = [{'x':[], 'y':[], 'z':[]},
-                  {'x':[], 'y':[], 'z':[]}]
         timestep = []
         data = []
         for filename in self.options.file_list:
@@ -50,20 +52,21 @@ class trajectory():
                     nb_atoms = int(file[i+1])
 
                 elif line.strip() == 'ITEM: BOX BOUNDS pp pp pp':
-                    bound_dict['x'] = [float(val) for val in file[i+1].strip().split() ]
-                    bound_dict['y'] = [float(val) for val in file[i+2].strip().split() ]
-                    bound_dict['z'] = [float(val) for val in file[i+3].strip().split() ]
+                    bounds['x'] = [float(val) for val in file[i+1].strip().split() ]
+                    bounds['y'] = [float(val) for val in file[i+2].strip().split() ]
+                    bounds['z'] = [float(val) for val in file[i+3].strip().split() ]
 
                 elif re.search('ITEM: ATOMS', line):
                     data.append(self.lines_to_df(file[i+1:i+nb_atoms-1], coordinates))
                     timestep.append(step)
 
-                    for i in range(len(bounds)):
-                        for j in bound_dict:
-                            bounds[i][j].append(bound_dict[j][i])
+                    bounds_list = []
+                    for i in bounds:
+                        bounds_list.append(bounds[i][1] - bounds[i][0])
+                    bounds_array.append(bounds_list)
 
         data = self.dfs_to_ds(data, timestep)
-        data = self.add_bounds(data, bounds)
+        data['bounds'] = xr.DataArray(bounds_array, coords=[data.ts, comp], dims=['ts', 'comp'])
 
         return data
 
@@ -98,13 +101,6 @@ class trajectory():
                 ds[i][j] = df[j].to_xarray()
             ds[i].update( {'ts': ( 'ts', [step[i]] )} )
         return xr.concat(ds, dim='ts')
-
-    def add_bounds(self, data, bounds):
-        for i in range(len(bounds)):
-            for j in bounds[i]:
-                name = 'b_'+str(j)+str(i)
-                data[name] = xr.DataArray(bounds[i][j], dims='timestep')
-        return data
 
     def trim_to_types(self, traj, types):
         """removes all but those types
@@ -153,22 +149,23 @@ class trajectory():
 
         return xr.concat(vectors, dim='id')
 
-    def save_trajectory(self):
+    def save_trajectory(self, path='save/'):
         try:
             print('saving atoms...')
-            io.save_dataset(self.atoms, 'save/', 'atoms_io')
+            io.save_dataset(self.atoms, path, 'atoms_io')
         except:
             print('No trajectory for atoms; not saving dataset...')
 
         try:
             print('saving vectors...')
-            io.save_dataset(self.atoms, 'save/', 'vectors_io')
+            io.save_dataset(self.vectors, path, 'vectors_io')
         except:
             print('No trajectory for vectors; not saving dataset...')
 
         #save options
 
-    def restore_trajectory(self, include='all', path='save/', name='atoms_'):
+    def restore_trajectory(self, include='all'):
+        path = self.options.path
         DO_ATOMS = False
         DO_VECTORS = False
         DO_OPTIONS = False
@@ -184,7 +181,7 @@ class trajectory():
         elif include == 'options':
             DO_OPTIONS = True
         else:
-            print('argument for include :',include,'is not recognized!')
+            print('argument for include :', include, 'is not recognized!')
 
         if DO_ATOMS:
             self.atoms = io.read_dataset(path, name='atoms_io.nc')
@@ -195,10 +192,12 @@ class trajectory():
 
 class trajectory_options():
     def __init__( self, path="./", file_pattern="ellipsoid.*", exclude_types=None, monomer_types=None, restore=False):
-        self.create_file_list(path, file_pattern)
+        self.path = path
         self.exclude_types = exclude_types
         self.monomer_types = monomer_types
         self.restore = restore
+        if not self.restore:
+            self.create_file_list(path, file_pattern)
         # if not monomer_types:
         #     self.monomer_types = {'atom':[6, 4], 'del':[ [5,5], [2,3] ]}
 
