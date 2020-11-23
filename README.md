@@ -1,1 +1,27 @@
 # local-explorer-tools
+
+@Article{Olivier2014,
+  author    = {Yoann Olivier and Luca Muccioli and Claudio Zannoni},
+  journal   = {{ChemPhysChem}},
+  title     = {Quinquephenyl: The Simplest Rigid-Rod-Like Nematic Liquid Crystal, or is it? An Atomistic Simulation},
+  year      = {2014},
+  month     = {apr},
+  number    = {7},
+  pages     = {1345--1355},
+  volume    = {15},
+  doi       = {10.1002/cphc.201301126},
+  groups    = {Articles, Order Parameters},
+  publisher = {Wiley},
+}
+@Article{Doi_2019,
+  author    = {Hideo Doi and Kazuaki Z. Takahashi and Kenji Tagashira and Jun-ichi Fukuda and Takeshi Aoyagi},
+  journal   = {Scientific Reports},
+  title     = {Machine learning-aided analysis for complex local structure of liquid crystal polymers},
+  year      = {2019},
+  month     = {nov},
+  number    = {1},
+  volume    = {9},
+  doi       = {10.1038/s41598-019-51238-1},
+  groups    = {Articles, Machine Learning, Order Parameters, Liquid Crystalline Polymers},
+  publisher = {Springer Science and Business Media {LLC}},
+}

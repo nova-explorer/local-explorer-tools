@@ -8,6 +8,10 @@ Usage: traj_opt = t.trajectory_options(path = "./trajectories/",
                                        monomer_types = 3)
        traj = t.trajectory(traj_opt)
        traj.save_trajectory(path = "./save/")
+Accessing data:
+       traj.vectors.cm
+       traj.vectors.coord
+       traj.atoms.xu
 
 Requires modules: xarray
                   numpy
@@ -16,7 +20,7 @@ Requires modules: xarray
                   pandas
                   gzip
 
-Requires scripts: global_op
+Requires scripts: compute_op
                   io_local
 
 TODO: * save options
@@ -58,7 +62,7 @@ class trajectory():
         else:
             self.atoms = self.read_traj()
             self.vectors = self.add_vectors()
-            self.vectors = cop.legendre_poly(self.vectors)
+            self.vectors = cop.qmatrix(self.vectors)
         # v_traj = self.trim_to_types(self.full_traj, self.options.monomer_types['atom']) ## needs testing
         # delimiters = self.trim_to_types(self.full_traj, self.options.monomer_types['del']) ## needs testing
 
@@ -193,7 +197,7 @@ class trajectory():
             - xarray.Dataset: Contains vector trajectories for specified monomer(s). Has same coordinates as the atoms dataset
 
         TODO:
-            streamline the vector extremities determination to match a general behavior and not just the ellispoid+pseudoatom template
+            - streamline the vector extremities determination to match a general behavior and not just the ellispoid+pseudoatom template
         """
         data = self.atoms # just because it's shorter
         mono_type = self.options.monomer_types
@@ -240,31 +244,39 @@ class trajectory():
         """Saves the trajectory class in a nc (netCDF) file. Much faster than read_trajectory.
 
         Args:
-            path (str, optional): [description]. Defaults to 'save/'.
+            - path (str, optional): Directory where the trajectory will be saved. Defaults to 'save/'.
 
         TODO:
+            - Check integration with traj_options
+            - Allow custom naming of files
+            - Estimate size of files?
+            - The try: except: to see if the datasets exist are a little rough. See if there's a better way to do that.
+            - Integrate for the cluster class
+            - Integrate a way to save options as well
         """
         try:
             print('saving atoms...')
-            io.save_dataset(self.atoms, path, 'atoms_io')
+            io.save_xarray(self.atoms, path, 'atoms_io')
         except:
             print('No trajectory for atoms; not saving dataset...')
 
         try:
             print('saving vectors...')
-            io.save_dataset(self.vectors, path, 'vectors_io')
+            io.save_xarray(self.vectors, path, 'vectors_io')
         except:
             print('No trajectory for vectors; not saving dataset...')
 
-        #save options
-
     def restore_trajectory(self, include = 'all'):
-        """[summary]
+        """Restores a saved trajectory from netCDF files to regenerate the trajectory class.
 
         Args:
-            include (str, optional): [description]. Defaults to 'all'.
+            - include (str, optional): Which saved datasets to restore. Defaults to 'all'.
 
         TODO:
+            - Damn this part is rough a bit.
+            - Allow custom naming. Maybe recognition of files based on a pattern not defined by user, eg. atoms_io.nc -> name.aio.nc
+            - Remove if include ==.... section, it's clunky and pattern recognition would be more versatile.
+            - Integrate option restoration.
         """
         path = self.options.path
         DO_ATOMS = False
@@ -285,24 +297,37 @@ class trajectory():
             print('argument for include :', include, 'is not recognized!')
 
         if DO_ATOMS:
-            self.atoms = io.read_dataset(path, name = 'atoms_io.nc')
+            self.atoms = io.read_xarray(path, name = 'atoms_io.nc')
         if DO_VECTORS:
-            self.vectors = io.read_dataset(path, name = 'vectors_io.nc')
-
-        #read  options
+            self.vectors = io.read_xarray(path, name = 'vectors_io.nc')
 
 class trajectory_options():
-    """[summary]
+    """Generates options for the trajectory. See Args for description of the options.
+
+    Args:
+        - path (str, optional): Directory of the trajectory files to read, be it LAMMPS dumps or netCDF previously saved. Defaults to "./", the current directory.
+        - file_pattern (str, optional): Pattern to match for finding the trajectory files. As of current version, it only works for restore=False. Defaults to "ellipsoid.*".
+        - exclude_types ([int], optional): Types that match the ones in this list will not be imported in the trajectory datasets. As of current version, it only works for restore=False. Defaults to None.
+        - monomer_types ([int], optional): Types that correspond to the ellipsoid of the monomer. Vectors extremities will be chosen as the particles one before and one after this type in a id ordered dataset. Defaults to None.
+        - restore (bool, optional): If True, the trajectory class will be generated from restoring the datasets from netCDF files. Defaults to False.
+
+    Attributes:
+        - Arguments
+        - file_list ([str]): List of the files that match pattern in path. Corresponds to the files that will be read for creating the trajectory class.
+
+    TODO:
+        - monomer_types is rough and need work for a more general approach
     """
     def __init__( self, path = "./", file_pattern = "ellipsoid.*", exclude_types = None, monomer_types = None, restore = False):
-        """[summary]
+        """Creates the class. Initializes the arguments attributes and creates file_list.
 
         Args:
-            path (str, optional): [description]. Defaults to "./".
-            file_pattern (str, optional): [description]. Defaults to "ellipsoid.*".
-            exclude_types ([type], optional): [description]. Defaults to None.
-            monomer_types ([type], optional): [description]. Defaults to None.
-            restore (bool, optional): [description]. Defaults to False.
+            - path (str, optional): Directory of the trajectory files to read, be it LAMMPS dumps or netCDF previously saved. Needs to end with "/". Defaults to "./", the current directory.
+            - file_pattern (str, optional): Pattern to match for finding the trajectory files. Works with the Unix style pathname pattern expansion. As of current version, it only works for restore=False. Defaults to "ellipsoid.*".
+            - exclude_types ([int], optional): Types that match the ones in this list will not be imported in the trajectory datasets. As of current version, it only works for restore=False. Defaults to None.
+            - monomer_types ([int], optional): Types that correspond to the ellipsoid of the monomer. Vectors extremities will be chosen as the particles one before and one after this type in a id ordered dataset. Defaults to None.
+            - restore (bool, optional): If True, the trajectory class will be generated from restoring the datasets from netCDF files. Defaults to False.
+
         """
         self.path = path
         self.exclude_types = exclude_types
@@ -310,20 +335,21 @@ class trajectory_options():
         self.restore = restore
         if not self.restore:
             self.create_file_list(path, file_pattern)
-        # if not monomer_types:
-        #     self.monomer_types = {'atom':[6, 4], 'del':[ [5, 5], [2, 3] ]}
 
     def create_file_list(self, path, file_pattern):
-        """[summary]
+        """Creates the file list from the files matching file_pattern in path
 
         Args:
-            path ([type]): [description]
-            file_pattern ([type]): [description]
+            - path (str): Directory of the trajectory files to read. Needs to end with "/"
+            - file_pattern (str): Pattern to match for finding the trajectory files. Works with the Unix style pathname pattern expansion.
 
         Raises:
-            EnvironmentError: [description]
+            - EnvironmentError: Script doesn't continue if no file is found.
+
+        TODO:
+            - EnvironmentError is a placeholder. Check if a more appropriate exists/can be created.
         """
         self.file_list = glob(path + file_pattern)
         print("Found", len(self.file_list), "matching", file_pattern, "in", path, "...")
         if len(self.file_list) == 0:
-            raise EnvironmentError # Edit to real error
+            raise EnvironmentError
