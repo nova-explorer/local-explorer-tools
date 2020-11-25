@@ -8,6 +8,7 @@ Requires modules: xarray
 import xarray as xr
 import sys
 import os
+from glob import glob
 
 
 def save_xarray(ds, path, name):
@@ -24,7 +25,7 @@ def save_xarray(ds, path, name):
     name = path + name + '.nc'
     ds.to_netcdf(name)
 
-def read_xarray(path, name):
+def read_dataset(file):
     """Creates a dataset from a netCDF file.
 
     Args:
@@ -34,12 +35,10 @@ def read_xarray(path, name):
     Returns:
         xarray Dataset: Dataset created from the netCDF file
     """
-    if path[-1] != '/':
-        path += '/'
-    ds = xr.open_dataset(path + name)
+    ds = xr.open_dataset(file)
     return ds
 
-def read_dataarray(path, name):
+def read_dataarray(file):
     """Creates a dataset from a netCDF file.
 
     Args:
@@ -49,10 +48,37 @@ def read_dataarray(path, name):
     Returns:
         xarray Dataset: Dataset created from the netCDF file
     """
-    if path[-1] != '/':
-        path += '/'
-    ds = xr.open_dataarray(path + name)
-    return ds
+    da = xr.open_dataarray(file)
+    return da
+
+def create_file_list(path, file_pattern):
+    """Creates the file list from the files matching file_pattern in path
+
+    Args:
+        - path (str): Directory of the trajectory files to read. Needs to end with "/"
+        - file_pattern (str): Pattern to match for finding the trajectory files. Works with the Unix style pathname pattern expansion.
+
+    Raises:
+        - EnvironmentError: Script doesn't continue if no file is found.
+
+    TODO:
+        - EnvironmentError is a placeholder. Check if a more appropriate exists/can be created.
+    """
+    file_list = glob(path + file_pattern)
+    print("Found", len(file_list), "matching", file_pattern, "in", path, "...")
+    if len(file_list) == 0:
+        raise EnvironmentError
+    return file_list
+
+def is_valid_name(name):
+    ## not sure raise and then return work well together
+    flag = False
+    try:
+        str(name)
+        flag = True
+    except:
+        raise ValueError('The name of the netCDF file needs to be a string or a string compatible container')
+    return flag
 
 def make_dir(directory):
     """Makes a directory if none can be found of that name.

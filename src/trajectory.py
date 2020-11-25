@@ -240,7 +240,7 @@ class trajectory():
 
         return xr.concat(vectors, dim = 'id')
 
-    def save_trajectory(self, path = 'save/'):
+    def save_trajectory(self, name, path = 'save/'):
         """Saves the trajectory class in a nc (netCDF) file. Much faster than read_trajectory.
 
         Args:
@@ -248,58 +248,48 @@ class trajectory():
 
         TODO:
             - Check integration with traj_options
-            - Allow custom naming of files
+            ----Allow custom naming of files----
             - Estimate size of files?
             - The try: except: to see if the datasets exist are a little rough. See if there's a better way to do that.
-            - Integrate for the cluster class
+            ----Integrate for the cluster class----
             - Integrate a way to save options as well
         """
+        # Checking if name can be converted to a string
         try:
-            print('saving atoms...')
-            io.save_xarray(self.atoms, path, 'atoms_io')
+            name = str(name)
         except:
-            print('No trajectory for atoms; not saving dataset...')
+            raise ValueError("The name of the netCDF file needs to be a string or a string compatible container")
 
         try:
+            print('saving atoms...')
+            io.save_xarray(self.atoms, path, name+'_atoms')
+        except:
+            print('No trajectory for atoms; not saving dataset...')
+        try:
             print('saving vectors...')
-            io.save_xarray(self.vectors, path, 'vectors_io')
+            io.save_xarray(self.vectors, path, name+'_vectors')
         except:
             print('No trajectory for vectors; not saving dataset...')
 
-    def restore_trajectory(self, include = 'all'):
+    def restore_trajectory(self):
         """Restores a saved trajectory from netCDF files to regenerate the trajectory class.
 
         Args:
             - include (str, optional): Which saved datasets to restore. Defaults to 'all'.
 
         TODO:
-            - Damn this part is rough a bit.
-            - Allow custom naming. Maybe recognition of files based on a pattern not defined by user, eg. atoms_io.nc -> name.aio.nc
-            - Remove if include ==.... section, it's clunky and pattern recognition would be more versatile.
             - Integrate option restoration.
         """
-        path = self.options.path
-        DO_ATOMS = False
-        DO_VECTORS = False
-        DO_OPTIONS = False
-
-        if include == 'all':
-            DO_ATOMS = True
-            DO_VECTORS = True
-            DO_OPTIONS = True
-        elif include == 'atoms':
-            DO_ATOMS = True
-        elif include == 'vectors':
-            DO_VECTORS = True
-        elif include == 'options':
-            DO_OPTIONS = True
-        else:
-            print('argument for include :', include, 'is not recognized!')
-
-        if DO_ATOMS:
-            self.atoms = io.read_xarray(path, name = 'atoms_io.nc')
-        if DO_VECTORS:
-            self.vectors = io.read_xarray(path, name = 'vectors_io.nc')
+        for i in self.options.file_list:
+            if 'atoms.nc' in i:
+                self.atoms = io.read_dataset(i)
+                print('trajectory.atoms restored!')
+            elif 'vectors.nc' in i:
+                self.vectors = io.read_dataset(i)
+                print('trajectory.vectors restored!')
+            elif 'options.txt' in i:
+                print('not implemented yet')
+            ## Should have an error case if i corresponds to neither traj or cluster
 
 class trajectory_options():
     """Generates options for the trajectory. See Args for description of the options.
@@ -333,23 +323,4 @@ class trajectory_options():
         self.exclude_types = exclude_types
         self.monomer_types = monomer_types
         self.restore = restore
-        if not self.restore:
-            self.create_file_list(path, file_pattern)
-
-    def create_file_list(self, path, file_pattern):
-        """Creates the file list from the files matching file_pattern in path
-
-        Args:
-            - path (str): Directory of the trajectory files to read. Needs to end with "/"
-            - file_pattern (str): Pattern to match for finding the trajectory files. Works with the Unix style pathname pattern expansion.
-
-        Raises:
-            - EnvironmentError: Script doesn't continue if no file is found.
-
-        TODO:
-            - EnvironmentError is a placeholder. Check if a more appropriate exists/can be created.
-        """
-        self.file_list = glob(path + file_pattern)
-        print("Found", len(self.file_list), "matching", file_pattern, "in", path, "...")
-        if len(self.file_list) == 0:
-            raise EnvironmentError
+        self.file_list = io.create_file_list(path, file_pattern)

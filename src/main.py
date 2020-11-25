@@ -15,12 +15,12 @@ clust = c.cluster(traj, c_opt)
 
 print('datasets done')
 
-clust.add_local_op()
+clust.add_local_op(op_type='onsager', nb_ave=1)
 # clust.add_local_op(op_type='common_neigh', nb_ave=1)
 print('voxel OPs done')
 
 rdf = cop.rdf(clust, cutoff_val=15, nb_bins=50)
 print('rdf done')
 
-traj.save_trajectory(path='./save/')
-clust.save_cluster(path='./save/')
+traj.save_trajectory(name='sma', path='./save/')
+clust.save_cluster(name='sma', path='./save/')

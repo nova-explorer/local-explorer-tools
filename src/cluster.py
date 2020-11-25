@@ -22,6 +22,7 @@ TODO: * save options
 import xarray as xr
 import numpy as np
 from scipy.spatial.distance import pdist, squareform
+from glob import glob
 
 import compute_op as cop
 import io_local as io
@@ -203,7 +204,7 @@ class cluster():
             raise ValueError('nb_ave cannot be lower than 1.')
         return op
 
-    def save_cluster(self, path = 'save/'):
+    def save_cluster(self, name, path = 'save/'):
         """Saves the cluster classs in a nc (netCDF) file. Much faster than computing OPs each time.
 
         Args:
@@ -211,19 +212,20 @@ class cluster():
 
         TODO: * Same as save_trajectory
         """
-        try:
-            print('saving distances...')
-            io.save_xarray(self.dist, path, 'dist_io')
-        except:
-            print('No data for distance; not saving dataArray...')
+        if io.is_valid_name(name):
+            try:
+                print('saving distances...')
+                io.save_xarray(self.dist, path, name+'_dist')
+            except:
+                print('No data for distance; not saving dataArray...')
 
-        try:
-            print('saving voxels...')
-            io.save_xarray(self.voxels, path, 'voxels_io')
-        except:
-            print('No data for voxels; not saving dataset...')
+            try:
+                print('saving voxels...')
+                io.save_xarray(self.voxels, path, name+'_voxels')
+            except:
+                print('No data for voxels; not saving dataset...')
 
-    def restore_cluster(self, include = 'all'):
+    def restore_cluster(self):
         """Restores a saved cluster from netCDF files to regenerate the cluster class.
 
         Args:
@@ -231,24 +233,15 @@ class cluster():
 
         TODO: * same as restore_trajectory
         """
-        path = self.options.path
-        DO_DIST = False
-        DO_VOX = False
-
-        if include == 'all':
-            DO_DIST = True
-            DO_VOX = True
-        elif include == 'distance':
-            DO_DIST = True
-        elif include == 'voxels':
-            DO_VOX = True
-        else:
-            print('argument for include :', include, 'is not recognized!')
-
-        if DO_DIST:
-            self.dist = io.read_dataarray(path, name = 'dist_io.nc')
-        if DO_VOX:
-            self.voxels = io.read_xarray(path, name = 'voxels_io.nc')
+        for i in self.options.file_list:
+            if 'dist.nc' in i:
+                self.dist = io.read_dataset(i)
+                print('trajectory.atoms restored!')
+            elif 'voxels.nc' in i:
+                self.voxels = io.read_dataset(i)
+                print('trajectory.vectors restored!')
+            elif options.txt in i:
+                print('not implemented yet')
 
 class cluster_options():
     """Generates options for the cluster class. See Args for description of the options.
@@ -263,7 +256,7 @@ class cluster_options():
 
     TODO:
     """
-    def __init__(self, nb_neigh = 10, restore = False, path = './'):
+    def __init__(self, nb_neigh = 10, restore = False, path = './', file_pattern='data*.nc'):
         """Creates the class. Initializes the argument attributes.
 
         Args:
@@ -273,4 +266,5 @@ class cluster_options():
         """
         self.nb_neigh = nb_neigh
         self.restore = restore
-        self.path = path
+        if restore:
+            self.file_list = io.create_file_list(path, file_pattern)
