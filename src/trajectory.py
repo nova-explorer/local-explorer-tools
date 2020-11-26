@@ -24,7 +24,6 @@ Requires scripts: compute_op
                   io_local
 
 TODO: * save options
-      * optimize reading file - > dataset process
       * more verbosity
       * test/remove trim_to_types method
       * add nb_atoms to the dataset

@@ -240,7 +240,7 @@ class cluster():
             elif 'voxels.nc' in i:
                 self.voxels = io.read_dataset(i)
                 print('trajectory.vectors restored!')
-            elif options.txt in i:
+            elif 'options.txt' in i:
                 print('not implemented yet')
 
 class cluster_options():
