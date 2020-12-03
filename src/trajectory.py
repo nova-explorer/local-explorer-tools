@@ -112,7 +112,7 @@ class trajectory():
                     bounds['z'] = [float(val) for val in file[i+3].strip().split() ]
 
                 elif re.search('ITEM: ATOMS', str(line)): # str() only serves to suppress pyright overload error.
-                    data.append(self.lines_to_df(file[i+1:i+nb_atoms-1], coordinates)) # will put the lines with all the atoms property in a pandas dataframe which is appended in a list for all timesteps
+                    data.append(self.lines_to_df(file[i+1:i+nb_atoms+1], coordinates)) # will put the lines with all the atoms property in a pandas dataframe which is appended in a list for all timesteps
                     timestep.append(step) # list with all the timesteps
 
                     bounds_list = []
