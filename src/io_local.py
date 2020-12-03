@@ -64,6 +64,9 @@ def create_file_list(path, file_pattern):
     TODO:
         - EnvironmentError is a placeholder. Check if a more appropriate exists/can be created.
     """
+    if path[-1] != '/':
+        path += '/'
+    make_dir(path)
     file_list = glob(path + file_pattern)
     print("Found", len(file_list), "matching", file_pattern, "in", path, "...")
     if len(file_list) == 0:
@@ -77,8 +80,33 @@ def is_valid_name(name):
         str(name)
         flag = True
     except:
-        raise ValueError('The name of the netCDF file needs to be a string or a string compatible container')
+        raise ValueError('The name of the file needs to be a string or a string compatible container')
     return flag
+
+def export_ovito(atoms, labels, mono_type=3, name='cluster.dump', path='save/'):
+    if is_valid_name(name):
+        if path[-1] != '/':
+            path += '/'
+        make_dir(path)
+
+        atoms = atoms.where(atoms.type==mono_type, drop=True)
+        atoms = atoms.drop_vars(['bounds', 'type'])
+        data_vars = [ i for i in atoms.data_vars]
+        atoms['labels'] = xr.DataArray(labels, coords=[atoms.id.values], dims=['id'])
+
+        f = open(path+name, 'wt')
+        f.write('ITEM: TIMESTEP\n')
+        f.write(''.join(map(str,atoms.ts.values)) + '\n')
+        f.write('ITEM: NUMBER OF ATOMS\n')
+        f.write(str(len(atoms.id)) + '\n')
+
+        f.write('ITEM: ATOMS id type ' + ' '.join(map(str, data_vars)) + '\n')
+        for i in atoms.id.values:
+            line = str(i) + ' ' # id
+            line += str(atoms.labels.sel(id=i).values)  + ' '# type
+            for j in data_vars:
+                line += str(atoms[j].sel(id=i).values[0]) + ' '
+            f.write(line + '\n')
 
 def make_dir(directory):
     """Makes a directory if none can be found of that name.

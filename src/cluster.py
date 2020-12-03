@@ -235,7 +235,7 @@ class cluster():
         """
         for i in self.options.file_list:
             if 'dist.nc' in i:
-                self.dist = io.read_dataset(i)
+                self.dist = io.read_dataarray(i)
                 print('trajectory.atoms restored!')
             elif 'voxels.nc' in i:
                 self.voxels = io.read_dataset(i)
