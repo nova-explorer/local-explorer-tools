@@ -129,7 +129,7 @@ dmypy.json
 .pyre/
 
 # Custom
-*.code-workspace
-misc/
+# local commit file
+.commit
 save/
-tests/
+archive/
