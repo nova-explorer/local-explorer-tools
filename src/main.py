@@ -20,23 +20,27 @@ start = time()
 #                    neighbors=10,
 #                    restore_locals=False)
 
-testing = cluster(path="../../local-explorer-tools/trajectories/",
+testing = cluster(path="trajectories/",
                    pattern="sma.dump.gz",
                    exclude=[1],
                    vector_types=[3],
                    restore_trajectory=False,
                    updates=True,
                    neighbors=10,
-                   restore_locals=False)
+                   restore_locals=False,
+                   vector_descriptors=["angle"],
+                   voxel_descriptors=False,
+                   distance_descriptor=True,
+                   director=False,
+                   normalization="max"
+                   )
 
-testing.generate_descriptors(vector_descriptors=["angle"], voxel_descriptors=False, distance_descriptor=True, director=False)
+print("1:", testing._features)
 
-print(testing.get_voxel_ds())
+features_final = testing.combine_features()
 
-# testing.add_local_op()
-
-# testing.compute_features()
-# testing.__clusterize()
+print("2:", testing._features)
+print("3:", features_final)
 
 stop = time()
 print("\n\nRUNTIME:", stop-start)

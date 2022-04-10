@@ -33,6 +33,7 @@ class locals( trajectory ):
             self._print("\tComputing voxels...\n")
 
             self._voxels = self.__compute_voxels_trajectory()
+
     def __compute_distance_matrices(self):
 
         distance_array=[]
