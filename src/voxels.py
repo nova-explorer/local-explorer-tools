@@ -1,28 +1,40 @@
-from numpy.lib.function_base import append #?
 import xarray as xr
 import numpy as np
 from scipy.spatial.distance import pdist, squareform
-from xarray.core.indexes import remove_unused_levels_categories #?
 
 import compute_structure as cs
 import io_local as iol
 from trajectory import trajectory
 
-class locals( trajectory ):
+class local( trajectory ):
 
     def __init__(self,
                  path="./", pattern="ellipsoid.*", exclude=None, vector_types=None, restore_trajectory=False, updates=True,
                  neighbors=10, restore_locals=False
                  ) -> None:
+        """Computes voxels from neighbor list of vectors using LAMMPS trajectory. Can also compute local properties of said voxels.
+
+        Args:
+        ## beginning of copied from trajectory.py
+            path (str, optional): Path to input files. Input files can be either LAMMPS trajectory dumps or previously saved trajectory using the save_trajectory method. Defaults to "./".
+            pattern (str, optional): Pattern matching input files. Input files can be either LAMMPS trajectory dumps or previously saved trajectory using the save_trajectory method. Defaults to "ellipsoid.*".
+            exclude (list of int or None/False, optional): Types to exclude from the trajectory. Defaults to None.
+            vector_types (list of int or None/False, optional): Types that match the ellipsoidal particles vector. The vector will be defined as the particles with ids just before and after this ellipsoidal particle. Defaults to None. TODO Should not default to None since code will fail, should find a way to match any particle sequence.
+            restore_trajectory (bool, optional): If True, the input files will be read as a restore of the trajectory class. Those input files need to have been created by the save_trajectory method. Defaults to False.
+            updates (bool, optional): If True, prints will update the user of current progress. Defaults to True.
+        ## end of copied from trajectory.py
+            neighbors (int, optional): Number of neighbors to form voxels. A particle counts in it's own voxel, so you will see voxels of size +1 what you specify here. Defaults to 10.
+            restore_locals (bool, optional): _If True, the input files will be read as a restore of the local class. Those input files need to have been created by the save_locals method. Defaults to False.
+        """
 
         super().__init__(path, pattern, exclude, vector_types, restore_trajectory, updates)
 
         if restore_locals:
             self._print("\tRestoring voxels...\n")
 
-            self.restore_voxels()
+            self.__restore_local()
         else:
-            self.neighbors = neighbors + 1 # particle belongs to its own voxel
+            self.neighbors = neighbors + 1 # a particle belongs to its own voxel
             self.timesteps = self._vectors.ts.values
             self.ids = self._vectors.id.values
             self.nb_atoms = len(self.ids)
@@ -34,9 +46,14 @@ class locals( trajectory ):
 
             self._voxels = self.__compute_voxels_trajectory()
 
-    def __compute_distance_matrices(self):
+    def __compute_distance_matrices(self) -> xr.DataArray:
+        """Computes, for each trajectory timestep, the euclidian pairwise distance between each vector center of mass. Periodic boundary conditions are applied.
 
-        distance_array=[]
+        Returns:
+            xr.DataArray: Pairwise distance dataarray. In function of timestep and xyz component.id and id_n correspond to particle i an j.
+        TODO: Should make a uniform thing with features.
+        """
+        distance_array = []
         total_ts = len(self.timesteps)
         for cnt, i in enumerate(self.timesteps):
 
@@ -60,13 +77,30 @@ class locals( trajectory ):
         distance_array = xr.DataArray(distance_array, coords=[self.timesteps, self.comps, self.ids, self.ids], dims=['ts', 'comp','id', 'id_n'])
         return distance_array
 
-    def __apply_pbc(self, positions, cutoff):
-        positions = np.where( positions >= cutoff,
-                         positions - cutoff,
-                         positions)
-        return positions
+    def __apply_pbc(self, distances, cutoff) -> np.ndarray:
+        """Apply periodic boundary conditions on the distances. If the distance is longer than the cutoff, the actual distance corresponds to the distance - cutoff.
 
-    def __compute_voxels_trajectory(self, properties = ['cm', 'angle', 'coord']):
+        Args:
+            distances (numpy.ndarray): Redundant pairwise distance matrix for one xyz component.
+            cutoff (float): Size of the simulation box in that xyz component.
+
+        Returns:
+            np.ndarray: Distance matrix with PBC applied.
+        """
+        distances = np.where( distances >= cutoff,
+                         distances - cutoff,
+                         distances)
+        return distances
+
+    def __compute_voxels_trajectory(self, properties = ['cm', 'angle', 'coord']) -> xr.Dataset:
+        """Constructs the voxel dataset using the nearest neighbors according to the distance matrix. Also adds properties from the vectors dataset to the voxels.
+
+        Args:
+            properties (list of str, optional): Properties from the vectors dataset that will be imported to the voxels. Defaults to ['cm', 'angle', 'coord'].
+
+        Returns:
+            xr.Dataset: Voxels dataset, in function of timestep, id and xyz components. The id_2 coordinate is use to list the elements of voxel i, where voxel i corresponds to the voxel of nearest neighbors of particle i.
+        """
         # Creating voxel ds using distance matrix
         voxels_array = []
         for i in self.timesteps:
@@ -115,17 +149,76 @@ class locals( trajectory ):
         self._print("\n")
 
         data["bounds"] = self._atoms.bounds
+
+        ## cool but doesnt take timesetep into account.
+        ## When code is working, should test which is faster.
+        # for i in self.__ids:
+        #     vox_ids = data.voxels.sel(id=i).id_2.values
+        #     data_var = self.__vectors[var].sel(id=vox_ids)
+        #     array.append(data_var)
+        # recombine array in da
+
         return data
 
-            ## cool but doesnt take timesetep into account.
-            ## When code is working, should test which is faster.
-            # for i in self.__ids:
-            #     vox_ids = data.voxels.sel(id=i).id_2.values
-            #     data_var = self.__vectors[var].sel(id=vox_ids)
-            #     array.append(data_var)
-            # recombine array in da
+    def __get_voxel_op(self, ts_, id_, op_func, nb_ave) -> float:
+        """Computes the order parameter of voxel i. Passing the id in this function was made so it could be used recusively if nb_ave > 1.
 
-    def add_local_op(self, op_type="onsager", nb_ave=1):
+        Args:
+            ts_ (int): Current timestep.
+            id_ (int): Current id (for identifying voxel).
+            op_func (func): Function that differs with the order parameter. Check the compute_structure file for details.
+            nb_ave (int): Number of averages to go over when computing the order parameter. nb_ave=1 will compute the order parameter for just the voxel. nb_ave=2 will compute the order parameter of all the voxels corresponding to the particle in voxel i and average them. nb_ave can thus increase until it matches the whole system but it also increases compute time a lot.
+
+        Raises:
+            ValueError: If nb_ave gets lower than 1 (0 or negative) or is inputed as such, this error will catch it.
+            ValueError: Error to catch any weird and unexpected behavior with nb_ave. Technically, should not trigger.
+            TODO: check if proper error types
+
+        Returns:
+            float: Order parameter of voxel i.
+        """
+        op = 0
+
+        if nb_ave == 1:
+            op += op_func( self._voxels.sel(ts=ts_, id=id_) )
+        elif nb_ave > 1:
+            for i in self._voxels.voxel.sel(ts=ts_, id=id_).values[1:]:
+                op += self.__get_voxel_op(ts_, i, op_func, nb_ave-1) / self.neighbors
+        elif nb_ave < 1:
+            raise ValueError("nb_ave cannot be lower than one")
+        else:
+            raise ValueError("Unexpected error towards value of nb_ave:" + str(nb_ave))
+        return op
+
+    def __restore_local(self) -> None:
+        """Restores the local object from a previously saved local object (with save_local method).
+
+        Raises:
+            EnvironmentError: If a file in file_list (created with path and pattern) doesn't match a restore possibility, it will raise an error. This error could be removed if user names some files the same way as save_local does. Still, it would be better pratice if user moves saved files to a different directory so this doesn't trigger.
+        TODO: a way to make sure dataset integrity is good and a way to make sure all of the class is properly restored.
+        """
+        for i in self.file_list:
+            if "distances.nc" in i:
+                self._distance_matrix = iol.read_dataset(i)
+            elif "voxels.nc" in i:
+                self._voxels = iol.read_dataset(i)
+            elif "l-options.dict" in i:
+                options = iol.read_dict(i)
+                self.neighbors = options["neighbors"]
+            else:
+                raise EnvironmentError("Restore not implemented for this file")
+
+    def add_local_op(self, op_type="onsager", nb_ave=1) -> None:
+        """Will add a local order parameter to the voxels dataset. Local order parameters are computed over each voxel.
+
+        Args:
+            op_type (str, optional): Specifies the order parameter to be computed. Choices are: onsager, common_neigh, pred_neigh, another_neigh. Thus far, only onsager has been implemented properly. Defaults to "onsager".
+            nb_ave (int, optional): Number of averages to go over when computing the order parameter. nb_ave=1 will compute the order parameter for just the voxel. nb_ave=2 will compute the order parameter of all the voxels corresponding to the particle in voxel i and average them. nb_ave can thus increase until it matches the whole system but it also increases compute time a lot. Defaults to 1.
+
+        Raises:
+            ValueError: Catches the case where order parameter isn't recognized
+            TODO: proper error type
+        """
         op_traj = []
         data_name = op_type + "_" + str(nb_ave)
 
@@ -154,27 +247,13 @@ class locals( trajectory ):
         self._print("\n")
         self._voxels[data_name] = xr.DataArray( op_traj, coords=[self.timesteps, self.ids], dims=["ts", "id"] )
 
-    def __get_voxel_op(self, ts_, id_, op_func, nb_ave):
-        op = 0
+    def save_local(self, name, path="save/") -> None:
+        """Saves local object in a netcdf file format. Will create 3 files: _distances trajectory dataarray, _voxels trajectory dataset and _t-options dictionary of the object options.
 
-        if nb_ave == 1:
-            op += op_func( self._voxels.sel(ts=ts_, id=id_) )
-        elif nb_ave > 1:
-            for i in self._voxels.voxel.sel(ts=ts_, id=id_).values[1:]:
-                op += self.__get_voxel_op(ts_, i, op_func, nb_ave-1) / self.neighbors
-        elif nb_ave < 1:
-            raise ValueError("nb_ave cannot be lower than one")
-        else:
-            raise ValueError("Unexpected error towards value of nb_ave:" + str(nb_ave))
-        return op
-
-    def get_distances_ds(self) -> xr.Dataset:
-        return self._distance_matrix
-
-    def get_voxel_ds(self) -> xr.Dataset:
-        return self._voxels
-
-    def save_locals(self, name, path="save/") -> None:
+        Args:
+            name (str): Name used to identify the saved files. It needs to be str convertible.
+            path (str, optional): Path where the saved files will be written. Defaults to "save/".
+        """
         options = {"neighbors":self.neighbors
                    }
         if iol.is_valid_name(name):
@@ -182,14 +261,18 @@ class locals( trajectory ):
             iol.save_xarray(self._voxels, name+"_voxels")
             iol.save_dict(options, path, name+"_l-options")
 
-    def restore_locals(self):
-        for i in self.file_list:
-            if "distances.nc" in i:
-                self._distance_matrix = iol.read_dataset(i)
-            elif "voxels.nc" in i:
-                self._voxels = iol.read_dataset(i)
-            elif "l-options.dict" in i:
-                options = iol.read_dict(i)
-                self.neighbors = options["neighbors"]
-            else:
-                raise EnvironmentError("Restore not implemented for this file")
+    def get_distances_da(self) -> xr.DataArray:
+        """Getter for the _distance_matrix dataarray
+
+        Returns:
+            xr.DataArray: Redundant pairwise distance matrix of the vectors' center of mass trajectory
+        """
+        return self._distance_matrix
+
+    def get_voxel_ds(self) -> xr.Dataset:
+        """Getter for the _voxels dataset
+
+        Returns:
+            xr.Dataset: Trajectory of the voxels in function of timestep, id and xyz components. The id_2 coordinate is use to list the elements of voxel i, where voxel i corresponds to the voxel of nearest neighbors of particle i.
+        """
+        return self._voxels

@@ -5,6 +5,8 @@ from time import time
 
 start = time()
 
+import matplotlib.pyplot as plt
+
 # testing = t.trajectory(path="local-explorer-tools/trajectories/",
 #                        pattern="poly.dump",
 #                        exclude=[1],
@@ -35,12 +37,11 @@ testing = cluster(path="trajectories/",
                    normalization="max"
                    )
 
-print("1:", testing._features)
-
 features_final = testing.combine_features()
 
-print("2:", testing._features)
-print("3:", features_final)
+a=testing.analyze_features()
+# get feature space graph
+## do ~10 reference configs by hand
 
 stop = time()
 print("\n\nRUNTIME:", stop-start)
