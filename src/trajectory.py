@@ -9,7 +9,7 @@ import compute_structure as cs
 class trajectory( object ): ## need object here?
 
     def __init__(self,
-                 path="./", pattern="ellipsoid.*", exclude=None, vector_types=None, restore=False, updates=True
+                 path="./", pattern="ellipsoid.*", exclude=None, vector_patterns=[[2,3,2]], restore=False, updates=True
                  ) -> None:
         """LAMMPS trajectory converted to an xarray dataset. Additionally ellipsoidal particles are defined as vectors and stored in another dataset for further computation.
 
@@ -17,7 +17,7 @@ class trajectory( object ): ## need object here?
             path (str, optional): Path to input files. Input files can be either LAMMPS trajectory dumps or previously saved trajectory using the save_trajectory method. Defaults to "./".
             pattern (str, optional): Pattern matching input files. Input files can be either LAMMPS trajectory dumps or previously saved trajectory using the save_trajectory method. Defaults to "ellipsoid.*".
             exclude (list of int or None/False, optional): Types to exclude from the trajectory. Defaults to None.
-            vector_types (list of int or None/False, optional): Types that match the ellipsoidal particles vector. The vector will be defined as the particles with ids just before and after this ellipsoidal particle. Defaults to None. TODO Should not default to None since code will fail, should find a way to match any particle sequence.
+            vector_patterns (nested list of int, optional): Patterns of types for defining vectors. Each element of the mother list is a vector pattern. Defaults to [[2,3,2]].
             restore (bool, optional): If True, the input files will be read as a restore of the trajectory class. Those input files need to have been created by the save_trajectory method. Defaults to False.
             updates (bool, optional): If True, prints will update the user of current progress. Defaults to True.
         TODO: Attributes
@@ -39,7 +39,7 @@ class trajectory( object ): ## need object here?
             self._print("\tReading trajectory...\n")
 
             self.exclude = exclude ## could be not stored in the object and just passed as argument to __read_dumps() but wouldn't be able to save it with save_trajectory() afterwards.
-            self.vector_types = vector_types
+            self.vector_patterns = vector_patterns
 
             self._atoms = self.__read_dumps()
 
@@ -158,7 +158,7 @@ class trajectory( object ): ## need object here?
         return xr.concat(ds, dim = 'ts')
 
     def __compute_vectors(self) -> xr.Dataset:
-        """Computes the trajectory of vectors. Vectors are particles defined by vector_types. Will also compute some properties of said vectors and add them to the trajectory properties.
+        """Computes the trajectory of vectors. Vectors are sequence of particles defined by vector_patterns. Will also compute some properties of said vectors and add them to the trajectory properties.
 
         Returns:
             xr.Dataset: Trajectory of vectors. Depends of timesteps, xyz coordinate and particle ids. It's properties are center of mass (cm), norm of vector (norm), angle with respect to xyz coordinates (euler angles?) (angle) and vector coordinates (coord).
@@ -175,33 +175,52 @@ class trajectory( object ): ## need object here?
         total_ids = len(data.id)
         for i in range(total_ids):
 
-            self._print( "\r\tComputing vectors... {}/{}".format(i+1,total_ids) )
+            self._print( "\r\tComputing vectors... {:.0%}".format((i+1)/total_ids) ) ## change to percent
+            for pattern in self.vector_patterns:
 
-            if data.isel(id=i).type in self.vector_types:
-                atom0 = data.drop_vars(droppers).isel(id=i-1)
-                atom1 = data.drop_vars(droppers).isel(id=i+1)
+                if i <= total_ids-len(pattern) and self.__is_fit_pattern( data.isel( id=range(i,i+len(pattern)) ).type, pattern ):
 
-                v = atom1 - atom0
-                norm = np.sqrt(v.xu**2 + v.yu**2 + v.zu**2)
-                v /= norm
-                v['coord'] = xr.DataArray( np.transpose([v.xu, v.yu, v.zu]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
-                v['norm'] = norm
+                    atom0 = data.drop_vars(droppers).isel(id=i)
+                    atom1 = data.drop_vars(droppers).isel(id=i+len(pattern)-1)
 
-                alpha = np.arccos(v.xu)
-                beta = np.arccos(v.yu)
-                gamma = np.arccos(v.zu)
-                v['angle'] = xr.DataArray( np.transpose([alpha, beta, gamma]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
+                    v = atom1 - atom0
+                    norm = np.sqrt(v.xu**2 + v.yu**2 + v.zu**2)
+                    v /= norm
+                    v['coord'] = xr.DataArray( np.transpose([v.xu, v.yu, v.zu]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
+                    v['norm'] = norm
 
-                x_cm = data.isel(id = i).xu
-                y_cm = data.isel(id = i).yu
-                z_cm = data.isel(id = i).zu
-                v['cm'] = xr.DataArray( np.transpose([x_cm, y_cm, z_cm]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
+                    alpha = np.arccos(v.xu)
+                    beta = np.arccos(v.yu)
+                    gamma = np.arccos(v.zu)
+                    v['angle'] = xr.DataArray( np.transpose([alpha, beta, gamma]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
 
-                v = v.drop_vars(['xu', 'yu', 'zu'])
-                v.update( {'id': ( 'id', [i] )} )
-                vectors.append(v)
+                    x_cm = data.isel(id = i).xu
+                    y_cm = data.isel(id = i).yu
+                    z_cm = data.isel(id = i).zu
+                    v['cm'] = xr.DataArray( np.transpose([x_cm, y_cm, z_cm]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
+
+                    v = v.drop_vars(['xu', 'yu', 'zu'])
+                    v.update( {'id': ( 'id', [i] )} )
+                    vectors.append(v)
         self._print("\n")
         return xr.concat(vectors, dim = 'id')
+
+    def __is_fit_pattern(self, types, pattern) -> bool:
+        """Checks if a sequence matches the pattern. If the particle sequence has exactly the same type sequence as the pattern, True will be returned, False otherwise.
+
+        Args:
+            types (xr.dataset): Dataset containing only the types of the selected particles.
+            ## may be dataArray
+            pattern (list of int): Type pattern defined as a vector.
+
+        Returns:
+            bool: True if particle sequence fits pattern, False otherwise.
+        """
+        flag = True
+        for i in range(len(pattern)):
+            if types.isel(id=i) != pattern[i]:
+                flag = False
+        return flag
 
     def __restore_trajectory(self) -> None:
         """Restores the trajectory object from a previously saved trajectory object (with save_trajectory method).

@@ -10,7 +10,7 @@ class features( local ):
 
     ## missing much communication to user
 
-    def __init__(self, path="./", pattern="ellipsoid.*", exclude=None, vector_types=None, restore_trajectory=False, updates=True,
+    def __init__(self, path="./", pattern="ellipsoid.*", exclude=None, vector_patterns=[[2,3,2]], restore_trajectory=False, updates=True,
                  neighbors=10, restore_locals=False,
                  vector_descriptors=["cm","angle"], voxel_descriptors=["cm", "angle"], distance_descriptor=True, director=False, normalization="standardize" ## proximity matrix, distance function?
                  ) -> None:
@@ -21,7 +21,7 @@ class features( local ):
             path (str, optional): Path to input files. Input files can be either LAMMPS trajectory dumps or previously saved trajectory using the save_trajectory method. Defaults to "./".
             pattern (str, optional): Pattern matching input files. Input files can be either LAMMPS trajectory dumps or previously saved trajectory using the save_trajectory method. Defaults to "ellipsoid.*".
             exclude (list of int or None/False, optional): Types to exclude from the trajectory. Defaults to None.
-            vector_types (list of int or None/False, optional): Types that match the ellipsoidal particles vector. The vector will be defined as the particles with ids just before and after this ellipsoidal particle. Defaults to None. TODO Should not default to None since code will fail, should find a way to match any particle sequence.
+            vector_patterns (nested list of int, optional): Patterns of types for defining vectors. Each element of the mother list is a vector pattern. Defaults to [[2,3,2]].
             restore_trajectory (bool, optional): If True, the input files will be read as a restore of the trajectory class. Those input files need to have been created by the save_trajectory method. Defaults to False.
             updates (bool, optional): If True, prints will update the user of current progress. Defaults to True.
             neighbors (int, optional): Number of neighbors to form voxels. A particle counts in it's own voxel, so you will see voxels of size +1 what you specify here. Defaults to 10.
@@ -33,7 +33,7 @@ class features( local ):
             director (bool, optional):Whether or not only one xyz component should be taken into account. If false, all xyz components are used. Defaults to False.
             normalization (str, optional): Normalization technique. Choices are: min-max, max and standardize. See methods for more details. Defaults to "standardize".
         """
-        super().__init__(path, pattern, exclude, vector_types, restore_trajectory, updates, neighbors, restore_locals)
+        super().__init__(path, pattern, exclude, vector_patterns, restore_trajectory, updates, neighbors, restore_locals)
 
         self._features = self.__generate_raw_features(vector_descriptors, voxel_descriptors, distance_descriptor, director)
         self.__apply_symmetries()
@@ -274,10 +274,13 @@ class features( local ):
         scatter_matrix(data.to_dataframe())
         plt.show()
 
-        fig,ax = plt.subplots()
-        scatter = ax.scatter( self.ids, self.ids, c=self._features.isel(ts=0) )
-        bar = fig.colorbar(scatter)
-        plt.show()
+        # fig,ax = plt.subplots()
+        # scatter = ax.scatter( self.ids, self.ids, c=self._features.isel(ts=0) )
+        # bar = fig.colorbar(scatter)
+        # plt.show()
+
+        # draw system xyz in 3d with angle as color -> the same as trajectory tho
+        # draw feature space but what is feature space?
 
         return data.to_dataframe()
 

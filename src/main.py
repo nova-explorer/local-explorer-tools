@@ -22,10 +22,19 @@ import matplotlib.pyplot as plt
 #                    neighbors=10,
 #                    restore_locals=False)
 
-testing = cluster(path="trajectories/",
+try:
+    shell = get_ipython().__class__.__name__
+    prefix = "../"
+except NameError:
+    shell = "standard Python"
+    prefix = ""
+
+print("Running in:", shell)
+
+testing = cluster(path=prefix+"trajectories/",
                    pattern="sma.dump.gz",
                    exclude=[1],
-                   vector_types=[3],
+                   vector_patterns=[ [2,3,2] ],
                    restore_trajectory=False,
                    updates=True,
                    neighbors=10,
@@ -39,7 +48,7 @@ testing = cluster(path="trajectories/",
 
 features_final = testing.combine_features()
 
-a=testing.analyze_features()
+# a=testing.analyze_features()
 # get feature space graph
 ## do ~10 reference configs by hand
 
