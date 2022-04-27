@@ -34,6 +34,8 @@ class trajectory( object ): ## need object here?
         if restore:
             self._print("\tRestoring trajectory...\n")
 
+            iol.check_file_list(self.file_list, pattern ,accepted=['atoms.nc', 'vectors.nc', "t-options.dict", "distances.nc", "voxels.nc", "l-options.dict"])
+
             self.__restore_trajectory()
         else:
             self._print("\tReading trajectory...\n")
@@ -161,7 +163,7 @@ class trajectory( object ): ## need object here?
         """Computes the trajectory of vectors. Vectors are sequence of particles defined by vector_patterns. Will also compute some properties of said vectors and add them to the trajectory properties.
 
         Returns:
-            xr.Dataset: Trajectory of vectors. Depends of timesteps, xyz coordinate and particle ids. It's properties are center of mass (cm), norm of vector (norm), angle with respect to xyz coordinates (euler angles?) (angle) and vector coordinates (coord).
+            xr.Dataset: Trajectory of vectors. Depends of timesteps, xyz coordinate and particle ids. It's properties are center of mass (cm), norm of vector (norm), angle with respect to xyz coordinates (euler angles?) (angle) and vector coordinates (coord). Center of mass is computed with the 2 extremum particles. Id is that of the center particle.
         """
         data = self._atoms
         coords = ['x', 'y', 'z']
@@ -194,13 +196,14 @@ class trajectory( object ): ## need object here?
                     gamma = np.arccos(v.zu)
                     v['angle'] = xr.DataArray( np.transpose([alpha, beta, gamma]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
 
-                    x_cm = data.isel(id = i).xu
-                    y_cm = data.isel(id = i).yu
-                    z_cm = data.isel(id = i).zu
+                    mid = (atom1 + atom0) / 2 ## should take into account all atoms in pattern and their mass
+                    x_cm = mid.xu
+                    y_cm = mid.yu
+                    z_cm = mid.zu
                     v['cm'] = xr.DataArray( np.transpose([x_cm, y_cm, z_cm]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
 
                     v = v.drop_vars(['xu', 'yu', 'zu'])
-                    v.update( {'id': ( 'id', [i] )} )
+                    v.update( {'id': ( 'id', [data.id[ i+int(len(pattern)/2) ]] )} )
                     vectors.append(v)
         self._print("\n")
         return xr.concat(vectors, dim = 'id')
@@ -225,8 +228,6 @@ class trajectory( object ): ## need object here?
     def __restore_trajectory(self) -> None:
         """Restores the trajectory object from a previously saved trajectory object (with save_trajectory method).
 
-        Raises:
-            EnvironmentError: If a file in file_list (created with path and pattern) doesn't match a restore possibility, it will raise an error. This error could be removed if user names some files the same way as save_trajectory does. Still, it would be better pratice if user moves saved trajectories to a different directory so this doesn't trigger.
         TODO: a way to make sure dataset integrity is good and a way to make sure all of the class is properly restored.
         """
         ## Could do dataset checkup to verify integrity
@@ -238,11 +239,8 @@ class trajectory( object ): ## need object here?
             elif "t-options.dict" in i:
                 options = iol.read_dict(i)
                 self.exclude = options["exclude"]
-                self.vector_types = options["vector_types"]
+                self.vector_patterns = options["vector_patterns"]
                 self.restore = True
-                self.file_list = options["file_list"] ## already exists ?
-            else:
-                raise EnvironmentError("Restore not implemented for this file")
 
     def _print(self, text): ## __print()?
         """A method to print if updates is enabled (True) and not print if not enabled (False). Will be used a lot by child classes too.
@@ -261,7 +259,7 @@ class trajectory( object ): ## need object here?
             path (str, optional): Path where the saved files will be written. Defaults to "save/".
         """
         options = {"exclude":self.exclude,
-                   "vector_types":self.vector_types,
+                   "vector_patterns":self.vector_patterns,
                    "file_list":self.file_list}
         if iol.is_valid_name(name):
             iol.save_xarray(self._atoms, path, name+"_atoms")

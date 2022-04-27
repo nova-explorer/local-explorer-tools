@@ -33,6 +33,12 @@ class local( trajectory ):
             self._print("\tRestoring voxels...\n")
 
             self.__restore_local()
+
+            self.timesteps = self._vectors.ts.values
+            self.ids = self._vectors.id.values
+            self.nb_atoms = len(self.ids)
+            self.comps = self._vectors.comp.values
+
         else:
             self.neighbors = neighbors + 1 # a particle belongs to its own voxel
             self.timesteps = self._vectors.ts.values
@@ -193,20 +199,16 @@ class local( trajectory ):
     def __restore_local(self) -> None:
         """Restores the local object from a previously saved local object (with save_local method).
 
-        Raises:
-            EnvironmentError: If a file in file_list (created with path and pattern) doesn't match a restore possibility, it will raise an error. This error could be removed if user names some files the same way as save_local does. Still, it would be better pratice if user moves saved files to a different directory so this doesn't trigger.
         TODO: a way to make sure dataset integrity is good and a way to make sure all of the class is properly restored.
         """
         for i in self.file_list:
             if "distances.nc" in i:
-                self._distance_matrix = iol.read_dataset(i)
+                self._distance_matrix = iol.read_dataarray(i)
             elif "voxels.nc" in i:
                 self._voxels = iol.read_dataset(i)
             elif "l-options.dict" in i:
                 options = iol.read_dict(i)
                 self.neighbors = options["neighbors"]
-            else:
-                raise EnvironmentError("Restore not implemented for this file")
 
     def add_local_op(self, op_type="onsager", nb_ave=1) -> None:
         """Will add a local order parameter to the voxels dataset. Local order parameters are computed over each voxel.
@@ -254,11 +256,11 @@ class local( trajectory ):
             name (str): Name used to identify the saved files. It needs to be str convertible.
             path (str, optional): Path where the saved files will be written. Defaults to "save/".
         """
-        options = {"neighbors":self.neighbors
+        options = {"neighbors":self.neighbors,
                    }
         if iol.is_valid_name(name):
-            iol.save_xarray(self._distance_matrix, name+"_distances")
-            iol.save_xarray(self._voxels, name+"_voxels")
+            iol.save_xarray(self._distance_matrix, path, name+"_distances")
+            iol.save_xarray(self._voxels, path, name+"_voxels")
             iol.save_dict(options, path, name+"_l-options")
 
     def get_distances_da(self) -> xr.DataArray:

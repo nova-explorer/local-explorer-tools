@@ -32,6 +32,7 @@ class features( local ):
             distance_descriptor (bool, optional): Whether or not to take in the distance matrix from local._distance_matrix. Defaults to True.
             director (bool, optional):Whether or not only one xyz component should be taken into account. If false, all xyz components are used. Defaults to False.
             normalization (str, optional): Normalization technique. Choices are: min-max, max and standardize. See methods for more details. Defaults to "standardize".
+        TODO: save and restore features
         """
         super().__init__(path, pattern, exclude, vector_patterns, restore_trajectory, updates, neighbors, restore_locals)
 
