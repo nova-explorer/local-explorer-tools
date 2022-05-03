@@ -5,8 +5,6 @@ from time import time
 
 start = time()
 
-import matplotlib.pyplot as plt
-
 try:
     shell = get_ipython().__class__.__name__
     prefix = "../"
@@ -31,7 +29,10 @@ testing = cluster(path=prefix+"save/",
                    normalization="max"
                    )
 
-# testing.clusterize(features_final, "KMedoids", n_clusters=2)
+features_final = testing.combine_features()
+
+testing.clusterize(features_final, "KMedoids", n_clusters=2)
+testing.export_to_ovito(name='testing_KMedoids', path="../save/clusters/")
 
 # a=testing.analyze_features()
 # get feature space graph

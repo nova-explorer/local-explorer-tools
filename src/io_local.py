@@ -160,19 +160,37 @@ def save_dict(dict, path, name) -> None:
     f.write(str(dict))
     f.close()
 
-def export_to_ovito(data, labels, name="cluster.dump", path="save/clusters/"):
+def frame_to_dump(data, name="cluster", path="save/clusters/"):
 
     if is_valid_name(name):
         if path[-1] != '/':
             path += '/'
         make_dir(path)
 
+    data_vars = [ i for i in list(data.keys()) if 'id' in data[i].coords and i != 'labels' ]
+
     f = open(path+name, 'wt')
 
-    for ts in data.timesteps:
+    f.write( 'ITEM: TIMESTEP\n' )
+    f.write( str(data.ts.values) + '\n' )
 
-        f.write('ITEM: TIMESTEP\n')
-        f.write(str(ts) + '\n')
-        f.write('ITEM: NUMBER OF ATOMS\n')
-        f.write(str(len(data.id)) + '\n')
+    f.write( 'ITEM: N_CLUSTER\n' )
+    f.write( str(data.n_clusters.values) + '\n' )
 
+    f.write( 'ITEM: NUMBER OF ATOMS\n' )
+    f.write( str(len(data.id)) + '\n' )
+
+    f.write( 'ITEM: BOX BOUNDS pp pp pp\n' )
+    for comp in data.comp:
+        f.write( '0 ' + str(data.bounds.sel(comp=comp).values) + '\n' )
+
+    f.write( 'ITEM: ATOMS id type ' + ' '.join(map(str, data_vars)) + '\n')
+    for i in data.id.values:
+        line = str(i) + ' ' # id
+        line += str(data.labels.sel(id=i).values) + ' ' # type
+        for j in data_vars:
+            line += str(data[j].sel(id=i).values) + ' ' # atom properties
+        f.write(line + '\n')
+    f.write('\n')
+
+    f.close()

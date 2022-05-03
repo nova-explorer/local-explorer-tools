@@ -32,8 +32,6 @@ testing = cluster(path=prefix+"trajectories/",
                    normalization="max"
                    )
 
-features_final = testing.combine_features()
-
 testing.save_trajectory("testing", prefix+"save/")
 testing.save_local("testing", prefix+"save/")
 
