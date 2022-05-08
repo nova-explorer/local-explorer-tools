@@ -32,6 +32,8 @@ testing = cluster(path=prefix+"trajectories/",
                    normalization="max"
                    )
 
+testing.add_local_op(op_type='onsager', nb_ave=1)
+
 testing.save_trajectory("testing", prefix+"save/")
 testing.save_local("testing", prefix+"save/")
 

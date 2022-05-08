@@ -1,11 +1,15 @@
+from numpy import NaN
 import sklearn.cluster as sk_c
 import sklearn_extra.cluster as ske_c
+import sklearn.metrics as sk_m
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import xarray as xr
+import numpy as np
 
 from features import features
 import io_local as iol
+import compute_structure as cs
 
 """
 kmeans : https://stackoverflow.com/questions/5529625/is-it-possible-to-specify-your-own-distance-function-using-scikit-learn-k-means
@@ -25,38 +29,40 @@ class cluster( features ):
                  neighbors=10, restore_locals=False,
                  vector_descriptors=["cm","angle"], voxel_descriptors=["cm", "angle"], distance_descriptor=True, director=False, normalization="standardize"
                  ) -> None:
+        """Computes clusters and saves them in the clustraj dataset. Contains many methods related to clustering.
+
+        Args:
+        ## beginning of copied from features.py
+            path (str, optional): Path to input files. Input files can be either LAMMPS trajectory dumps or previously saved trajectory using the save_trajectory method. Defaults to "./".
+            pattern (str, optional): Pattern matching input files. Input files can be either LAMMPS trajectory dumps or previously saved trajectory using the save_trajectory method. Defaults to "ellipsoid.*".
+            exclude (list of int or None/False, optional): Types to exclude from the trajectory. Defaults to None.
+            vector_patterns (nested list of int, optional): Patterns of types for defining vectors. Each element of the mother list is a vector pattern. Defaults to [[2,3,2]].
+            restore_trajectory (bool, optional): If True, the input files will be read as a restore of the trajectory class. Those input files need to have been created by the save_trajectory method. Defaults to False.
+            updates (bool, optional): If True, prints will update the user of current progress. Defaults to True.
+            neighbors (int, optional): Number of neighbors to form voxels. A particle counts in it's own voxel, so you will see voxels of size +1 what you specify here. Defaults to 10.
+            restore_locals (bool, optional): _If True, the input files will be read as a restore of the local class. Those input files need to have been created by the save_locals method. Defaults to False.
+            vector_descriptors (list of str, optional): List of variables to take in from the trajectory._vectors dataset. Defaults to ["cm","angle"].
+            voxel_descriptors (list of str, optional): List of variables to take in from the local._voxels dataset. Defaults to ["cm", "angle"].
+            distance_descriptor (bool, optional): Whether or not to take in the distance matrix from local._distance_matrix. Defaults to True.
+            director (bool, optional):Whether or not only one xyz component should be taken into account. If false, all xyz components are used. Defaults to False.
+            normalization (str, optional): Normalization technique. Choices are: min-max, max and standardize. See methods for more details. Defaults to "standardize".
+        ## end of copied from features.py
+        TODO: Generalisation of n_clusters to generic clustering parameters
+        """
 
         super().__init__(path, pattern, exclude, vector_patterns, restore_trajectory, updates, neighbors, restore_locals, vector_descriptors, voxel_descriptors, distance_descriptor, director, normalization)
 
         self._clustraj = self.__generate_clustered_trajectory(["xu", "yu", "zu", "c_orient[*]", "c_shape[*]", "bounds"])
 
-    def clusterize(self, features, algorithm="KMedoids", n_clusters=None, name="cluster.dump", **kwargs):
+    def __generate_clustered_trajectory(self, vars) -> xr.Dataset:
+        """Generates the clustraj dataset from the atoms dataset.
 
-        if algorithm == "KMedoids":
-            if isinstance(n_clusters, int):
-                n_clusters = [n_clusters]
-                clust_alg = [ ske_c.KMedoids(metric='precomputed', n_clusters=i, **kwargs) for i in n_clusters ]
-            else:
-                raise ValueError("n_clusters bad format") ## do a proper error
+        Args:
+            vars (list of str): Lists the variables to transfer from atoms to clustraj. For variables containing [*] in their name, every instance of said names matching without the [*] will be added instead.
 
-        elif algorithm == "AffinityPropagation":
-            clust_alg = sk_c.AffinityPropagation(metric='precomputed', **kwargs)
-
-        elif algorithm == "commonNN":
-            clust_alg = ske_c.CommonNNClustering(metric='precomputed', **kwargs)
-
-        labels_array = []
-        for ts in self.timesteps:
-            labels = []
-            for i, cluster in enumerate(clust_alg):
-                cluster.fit(features.sel(ts=ts))
-                labels.append(cluster.labels_)
-            labels_array.append(labels)
-
-        self._clustraj['labels'] = xr.DataArray(labels_array, coords=[self.timesteps, n_clusters, self.ids], dims=['ts', 'n_clusters', 'id'])
-
-
-    def __generate_clustered_trajectory(self, vars):
+        Returns:
+            xr.Dataset: Clustraj dataset. Coordinates are the same as atoms (generally timestep and id) and data_variables are those imported.
+        """
         ds = xr.Dataset()
         data_vars = list(self._atoms.keys())
         for i in vars:
@@ -69,16 +75,211 @@ class cluster( features ):
                 ds [i] = self._atoms[i].where(self._atoms.id==self._vectors.id)
         return ds
 
-    def __compute_silhouette(self):
-        pass
-    def __compute_dopcev(self):
-        pass
+    def __compute_silhouette(self, features, labels) -> float:
+        """Computes the silhoutette coefficient of a single clustering. In case there is only one cluster, silhouette coefficient is NaN instead.
+        The silhouette coefficient is a measure of how different clusters are and ranges from 1 to -1.
 
-    def get_clustraj_ds(self):
+        Args:
+            features (xr.Dataset): Features used for clustering. Need to be selected for a single timestep.
+            labels (np.ndarray 1D): Clustering labels. Need to be selected for a single timestep and clustering parameter (n_clusters).
+
+        Returns:
+            float: Silhouette coefficient
+        """
+        if sum(labels) > 0: # if there more than 1 cluster, in which case silhouette_score raises an error
+            silhouette = sk_m.silhouette_score(features, labels, metric='precomputed')
+        else: # if there are only one cluster, NaN is attributed
+            silhouette = NaN ## could be 0 or -1
+        self._print('\t\tSilhouette : {:.3f}\n'.format(silhouette))
+        return silhouette
+
+    def __compute_dopcev_1(self, data) -> float:
+        """Computes the Domain Order Parameter Coefficient for External Validation (DOPCEV). DOPCEV is used for representing how well a cluster represents domain using the local and global onsager order parameter.
+
+        Formula:
+            TODO
+
+        Args:
+            data (xr.Dataset): Clustered clustraj dataset for a single timestep and clustering parameter (n_clusters). The vectors and voxels dataset will also be needed.
+
+        Returns:
+            float: DOPCEV value for the current clustering.
+        """
+        dopcev = []
+        for i in range(data.n_clusters.values):
+            self._print('\t\tDOPCEV for cluster {}\n'.format(i+1))
+            current_cluster = data.where(data.labels==i, drop=True).id.values ##maybe not just ids?
+            current_cluster_indices = [ i for i,id in enumerate(self.ids) if id in current_cluster ]
+
+            particles_fraction = len(current_cluster) / len(self.ids)
+            if particles_fraction == 0:
+                dopcev.append(0)
+                self._print('\t\t\t0 atoms in cluster, DOPCEV value set to 0\n')
+            else:
+                op_cluster = float( cs.global_onsager(self._vectors.sel(ts=data.ts).isel(id=current_cluster_indices)) )
+                op_local = float( self._voxels.sel(ts=data.ts).isel(id=current_cluster_indices).onsager_1.values.mean() )## could take onsager 2
+
+                ratio = abs(op_cluster/op_local - 1)
+                dopcev.append( particles_fraction * ratio )
+                self._print( '\t\t\tCluster OP: {:.3f}, local OP: {:.3f}, fraction: {:.3f}, DOPCEV: {:.3f}\n'.format(op_cluster,
+                                                                                                                     op_local,
+                                                                                                                     particles_fraction,
+                                                                                                                     1-ratio)
+                            )
+        self._print('\t\tDOPCEV: {:.3f}\n'.format(1-sum(dopcev)))
+        return 1 - sum(dopcev) #sum ou moyenne
+
+    def __compute_dopcev_2(self, data) -> float:
+        """Computes the Domain Order Parameter Coefficient for External Validation (DOPCEV). DOPCEV is used for representing how well a cluster represents domain using the local and global onsager order parameter.
+
+        Formula:
+            TODO
+
+        Args:
+            data (xr.Dataset): Clustered clustraj dataset for a single timestep and clustering parameter (n_clusters). The vectors and voxels dataset will also be needed.
+
+        Returns:
+            float: DOPCEV value for the current clustering.
+        """
+        dopcev = []
+        op_global = self._vectors.sel(ts=data.ts).op.values
+        print(op_global)
+
+        for i in range(data.n_clusters.values):
+            self._print('\t\tDOPCEV for cluster {}\n'.format(i+1))
+            current_cluster = data.where(data.labels==i, drop=True).id.values ##maybe not just ids?
+            current_cluster_indices = [ i for i,id in enumerate(self.ids) if id in current_cluster ]
+
+            particles_fraction = len(current_cluster) / len(self.ids)
+            if particles_fraction == 0:
+                dopcev.append(0)
+                self._print('\t\t\t0 atoms in cluster, DOPCEV value set to 0\n')
+            else:
+                op_cluster = float( cs.global_onsager(self._vectors.sel(ts=data.ts).isel(id=current_cluster_indices)) )
+                op_local = float( self._voxels.sel(ts=data.ts).isel(id=current_cluster_indices).onsager_1.values.mean() )## could take onsager 2
+
+                ratio = abs(op_cluster/op_local - 1)
+                dopcev.append( particles_fraction * ratio )
+                self._print( '\t\t\tCluster OP: {:.3f}, local OP: {:.3f}, fraction: {:.3f}, DOPCEV: {:.3f}\n'.format(op_cluster,
+                                                                                                                     op_local,
+                                                                                                                     particles_fraction,
+                                                                                                                     op_global-ratio)
+                            )
+        self._print('\t\tDOPCEV: {:.3f}\n'.format(op_global-sum(dopcev)))
+        return op_global - sum(dopcev) #sum ou moyenne
+
+    def clusterize(self, features, algorithm="KMedoids", n_clusters=None,  **kwargs) -> xr.Dataset:
+        """Performs the clustering of features.
+
+        Args:
+            features (xr.Dataset): Features dataset. Must be a precomputed kernel matrix. Using the combine_features method is recommended.
+            algorithm (str, optional): Chooses between the different clustering algorithm. Choices are: KMedoids, AffinityPropagation and commonNN. Defaults to "KMedoids".
+            n_clusters (int or list of int, optional): Number of clusters used. In case n_clusters is a list, each number of clusters is done. Defaults to None.
+
+        Raises:
+            ValueError: Catches the error where n_clusters is neither an int or a list.
+
+        Returns:
+            xr.Dataset: New dataset of clustraj but with labels corresponding to the clustering.
+        """
+
+        if algorithm == "KMedoids":
+            if isinstance(n_clusters, int):
+                n_clusters = [n_clusters]
+            elif isinstance(n_clusters, list):
+                pass
+            else:
+                raise ValueError("n_clusters bad format") ## do a proper error
+
+            clust_alg = [ ske_c.KMedoids(metric='precomputed', n_clusters=i, **kwargs) for i in n_clusters ]
+
+        elif algorithm == "AffinityPropagation":
+            clust_alg = sk_c.AffinityPropagation(metric='precomputed', **kwargs)
+
+        elif algorithm == "commonNN":
+            clust_alg = ske_c.CommonNNClustering(metric='precomputed', **kwargs)
+
+        labels_array = []
+        total_ts = len(self.timesteps)
+        total_param = len(clust_alg)
+        for cnt_ts, ts in enumerate(self.timesteps):
+            labels = []
+            for i, cluster in enumerate(clust_alg):
+                self._print( '\r\tClusterizing timestep {}/{} with parameter {}/{}'.format(cnt_ts+1, total_ts,
+                                                                                           i+1, total_param)
+                            )
+                cluster.fit(features.sel(ts=ts))
+                labels.append(cluster.labels_)
+            labels_array.append(labels)
+        self._print("\n")
+        data = self._clustraj.copy()
+        data['labels'] = xr.DataArray(labels_array, coords=[self.timesteps, n_clusters, self.ids], dims=['ts', 'n_clusters', 'id'])
+        return data
+
+    def compute_coefficients(self, data, features, dopcev_type=1) -> xr.Dataset:
+        """Method that deals with computing the clustering validation coefficients.
+
+        Args:
+            data (xr.Dataset): Clustraj dataset with clustering labels.
+            features (xr.Dataset): Features used for clustering.
+            dopcev_type (int, optional): Just a quick way for me to change the DOPCEV formula for testing. Read the different ones or stick to default. Defaults to 1.
+
+        Raises:
+            ValueError: Catches the error where normalization technique isn't recognized.
+
+        Returns:
+            xr.Dataset: Clustraj dataset with added validation coefficients for each timestep and clustering parameters (n_clusters).
+        """
+
+        if dopcev_type == 1:
+            dopcev_func = self.__compute_dopcev_1
+        elif dopcev_type == 2:
+            dopcev_func = self.__compute_dopcev_2
+        else:
+            raise ValueError("Specified DOPCEV type not implemented:" + str(dopcev_type))
+
+        silhouettes_arr = []
+        dopcevs_arr = []
+        for i in data.ts.values:
+            silhouettes = []
+            dopcevs = []
+
+            for j in data.n_clusters.values:
+                self._print("\tComputing coefficients on timestep {} for {} clusters\n".format(i,j))
+                silhouettes.append(self.__compute_silhouette( features.sel(ts=i), data.labels.sel(ts=i, n_clusters=j).values ))
+                dopcevs.append(dopcev_func( data.sel(ts=i, n_clusters=j) ))
+
+            silhouettes_arr.append(silhouettes)
+            dopcevs_arr.append(dopcevs)
+
+        data['silhouette'] = xr.DataArray(silhouettes_arr, coords=[self.timesteps, data.n_clusters], dims=['ts', 'n_clusters'])
+        data['dopcev'] = xr.DataArray(dopcevs_arr, coords=[self.timesteps, data.n_clusters], dims=['ts', 'n_clusters'])
+
+        return data
+
+    def export_to_ovito(self, data, name, path) -> None:
+        """Allows exporting a clustered clustraj dataset to LAMMPS dump format. A trajectory dump file will be created for each timestep and clustering parameter (n_clusters).
+
+        Args:
+            data (xr.Dataset): _description_
+            name (str): Base name with which the dump files will be saved as.
+            path (str): Path where the dump files will be saved.
+        """
+        total_ts = len(self.timesteps)
+        total_param = len(data.n_clusters.values)
+
+        for cnt_ts, ts in enumerate(data.ts.values): ## add for cluster param scan instead of n_clusters specifically
+            for cnt_i, i in enumerate(data.n_clusters.values):
+                self._print("\r\tExporting frame on timestep {}/{} for parameter {}/{}\n".format(cnt_ts+1, total_ts,
+                                                                                                 cnt_i+1, total_param)
+                            )
+                name_ij = "cluster." + name + "_" + str(ts) + "_" + str(i) + ".dump"
+                iol.frame_to_dump(data.sel(n_clusters=i, ts=ts), name_ij, path)
+
+    def get_clustraj_ds(self) -> xr.Dataset:
+        """Getter for the clustraj dataset.
+
+        Returns:
+            xr.Dataset: Trajectory of to be clustered particles.
+        """
         return self._clustraj
-
-    def export_to_ovito(self, name, path):
-        for i in self._clustraj.n_clusters.values: ## add for cluster param scan instead of n_clusters specifically
-            for j in self._clustraj.ts.values:
-                name_ij = "cluster." + name + "_" + str(j) + "_" + str(i) + ".dump"
-                iol.frame_to_dump(self._clustraj.sel(n_clusters=i, ts=j), name_ij, path)

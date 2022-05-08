@@ -160,7 +160,14 @@ def save_dict(dict, path, name) -> None:
     f.write(str(dict))
     f.close()
 
-def frame_to_dump(data, name="cluster", path="save/clusters/"):
+def frame_to_dump(data, name="cluster", path="save/clusters/") -> None:
+    """Exports a frame from a clustered trajectory and saves it in a LAMMPS dump file format.
+
+    Args:
+        data (xr.Dataset): Clustraj dataset but selected for a single timestep and clustering parameter (n_clusters).
+        name (str, optional): Name with which the dump file will be saved as. Defaults to "cluster".
+        path (str, optional): Path where the dump file will be saved. Defaults to "save/clusters/".
+    """
 
     if is_valid_name(name):
         if path[-1] != '/':

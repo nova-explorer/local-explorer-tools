@@ -31,8 +31,9 @@ testing = cluster(path=prefix+"save/",
 
 features_final = testing.combine_features()
 
-testing.clusterize(features_final, "KMedoids", n_clusters=2)
-testing.export_to_ovito(name='testing_KMedoids', path="../save/clusters/")
+data = testing.clusterize(features_final, "KMedoids", n_clusters=[1,2,3,4,5])
+data = testing.compute_coefficients(data, features_final, dopcev_type=1)
+testing.export_to_ovito(data, name='testing_KMedoids', path="../save/clusters/")
 
 # a=testing.analyze_features()
 # get feature space graph
