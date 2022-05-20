@@ -59,7 +59,6 @@ class trajectory( object ): ## need object here?
         comp = ['x', 'y', 'z']
         nb_atoms = None
         step = None
-        bounds = []
         bounds_array = []
         timestep = []
         data = []
@@ -76,6 +75,7 @@ class trajectory( object ): ## need object here?
             elif line == "ITEM: NUMBER OF ATOMS":
                 nb_atoms = int(file[i+1])
             elif line == "ITEM: BOX BOUNDS pp pp pp":
+                bounds = []
                 for j in range(len(comp)):
                     bounds.append([ float(val) for val in file[i+j+1].strip().split() ])
                 bounds_array.append([ j[1] - j[0] for j in bounds ])
@@ -130,9 +130,10 @@ class trajectory( object ): ## need object here?
             for i in lines:
                 line = i.strip().split()
                 if self.exclude:
-                    for j in self.exclude:
-                        if int(line[type_id]) != int(j):
-                            data.append(line)
+                    if int(line[type_id]) not in self.exclude:
+                    # for j in self.exclude:
+                    #     if int(line[type_id]) != int(j):
+                        data.append(line)
 
         df = pd.DataFrame(data, columns = column_names)
         df = df.apply(pd.to_numeric)
@@ -221,9 +222,21 @@ class trajectory( object ): ## need object here?
         """
         flag = True
         for i in range(len(pattern)):
-            if types.isel(id=i) != pattern[i]:
+            self.__check_type_consistency(types.isel(id=i))
+            if types.isel(id=i, ts=0) != pattern[i]:
                 flag = False
         return flag
+
+    def __check_type_consistency(self, types):
+        type_0 = types.isel(ts=0).values
+        for i in types.ts:
+            if type_0 != types.sel(ts=i).values:
+                raise IndexError("type is not consistent across simulation for id {id}. ts 0: {type0}, ts {ts1}: {type1}.".format(id=types.id,
+                                                                                                                                  type0=type_0,
+                                                                                                                                  ts1=i,
+                                                                                                                                  type1=types.sel(ts=i).values,
+                                                                                                                                  )
+                                 )
 
     def __restore_trajectory(self) -> None:
         """Restores the trajectory object from a previously saved trajectory object (with save_trajectory method).

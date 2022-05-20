@@ -133,7 +133,7 @@ class features( local ):
                     data = [ [i] for i in self._features[name].sel(ts=i).values ]
                     distance_array.append(squareform(pdist( data )))
 
-                    self._print("\n")
+                self._print("\n")
                 self._features[name] = xr.DataArray(distance_array, coords=[self.timesteps, self.ids, self.ids], dims=['ts', 'id', 'id_n'])
 
     def __normalize(self, normalization) -> None:
@@ -150,20 +150,27 @@ class features( local ):
         ## check if normalization techniques give right range
         ## might be useful to go back to data parameter instead of _features since we could use __normalize from outside script (same with symmetries and distances)
 
-        if normalization == "min-max":
-            norm_func = self.__normalize_min_max
-        elif normalization == "max":
-            norm_func = self.__normalize_max
-        elif normalization == "standardize":
-            norm_func = self.__standardize
-        else:
-            raise ValueError("Specified normalization not implemented yet:" + normalization)
+        if normalization:
+            if normalization == "min-max":
+                norm_func = self.__normalize_min_max
+            elif normalization == "max":
+                norm_func = self.__normalize_max
+            elif normalization == "zscores_abs":
+                norm_func = self.__zscores_abs_dev
+            elif normalization == "zscores_std":
+                norm_func = self.__zscores_std_dev
+            else:
+                raise ValueError("Specified normalization not implemented yet:" + normalization)
 
-        for name in self._features:
-            data = []
-            for ts in self.timesteps:
-                data.append( norm_func( self._features[name].sel(ts=ts) ) )
-            self._features[name] = xr.DataArray(data, coords=[self.timesteps, self.ids, self.ids], dims=['ts', 'id', 'id_n'])
+            for name in self._features:
+                data = []
+                for ts in self.timesteps:
+                    if self._features[name].sel(ts=ts).values.any() == 0:
+                        data.append(self._features[name].sel(ts=ts))
+                        self._print("Data for {} at timestep {} is all 0. Skipping normalization.\n".format(name, ts))
+                    else:
+                        data.append( norm_func( self._features[name].sel(ts=ts) ) )
+                self._features[name] = xr.DataArray(data, coords=[self.timesteps, self.ids, self.ids], dims=['ts', 'id', 'id_n'])
 
     def __normalize_max(self, data) -> xr.DataArray:
         """Normalization technique. Divide the whole feature by it's maximum value.
@@ -195,7 +202,7 @@ class features( local ):
         self.__check_dims(data, n=2)
         return ( data - np.min(data) ) / ( np.max(data) - np.min(data) )
 
-    def __standardize(self, data) -> xr.DataArray: ## not working for some reason
+    def __zscores_abs_dev(self, data) -> xr.DataArray: ## not working for some reason
         """Normalization technique. Subsracts the average value and and divides by the average difference.
 
         Formula:
@@ -207,11 +214,30 @@ class features( local ):
             data (xr.DataArray): Unnormalized data.
 
         Returns:
-            xr.DataArray: Normalized data. Values range from -1 to 1.
+            xr.DataArray: Normalized data. Values range from -4 to 4.
         """
         self.__check_dims(data, n=2)
         data = squareform(data)
         data = ( data - data.mean() ) / np.mean( abs(data-data.mean()) )
+        return squareform(data)
+
+    def __zscores_std_dev(self, data) -> xr.DataArray: ## not working for some reason
+        """Normalization technique. Subsracts the average value and and divides by the average difference.
+
+        Formula:
+            z_if = (x_if - avg(x_f))/s_f
+            s_f = 1/n { sum_i^n (x_if - m_f) }
+            TODO: All formulas should be latex compatible and have refs
+
+        Args:
+            data (xr.DataArray): Unnormalized data.
+
+        Returns:
+            xr.DataArray: Normalized data. Values range from -4 to 4.
+        """
+        self.__check_dims(data, n=2)
+        data = squareform(data)
+        data = ( data - data.mean() ) / data.std() ##?
         return squareform(data)
 
     def __check_dims(self, data, n) -> None:

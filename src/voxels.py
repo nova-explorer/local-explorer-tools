@@ -78,7 +78,7 @@ class local( trajectory ):
             # this modification allows distance matrix to still have separate xyz components, thus being useful for clustering.
             distance_array.append(distance_matrix)
 
-            self._print( "\n" )
+        self._print( "\n" )
 
         distance_array = xr.DataArray(distance_array, coords=[self.timesteps, self.comps, self.ids, self.ids], dims=['ts', 'comp','id', 'id_n'])
         return distance_array
