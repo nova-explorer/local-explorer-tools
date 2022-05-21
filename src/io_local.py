@@ -140,7 +140,7 @@ def save_xarray(ds, path, name) -> None:
     if path[-1] != '/':
         path += '/'
     make_dir(path)
-    name = path + name + '.nc'
+    name = path + name
     ds.to_netcdf(name)
 
 def save_dict(dict, path, name) -> None:
@@ -155,7 +155,7 @@ def save_dict(dict, path, name) -> None:
         path += '/'
     make_dir(path)
 
-    name = path + name + '.dict'
+    name = path + name
     f = open(name, "wt")
     f.write(str(dict))
     f.close()

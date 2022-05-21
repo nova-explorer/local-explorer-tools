@@ -201,14 +201,35 @@ class local( trajectory ):
 
         TODO: a way to make sure dataset integrity is good and a way to make sure all of the class is properly restored.
         """
+        files_imported = {'distances':None, 'voxels':None, 'options':None}
+
         for i in self.file_list:
-            if "distances.nc" in i:
-                self._distance_matrix = iol.read_dataarray(i)
-            elif "voxels.nc" in i:
-                self._voxels = iol.read_dataset(i)
-            elif "l-options.dict" in i:
-                options = iol.read_dict(i)
-                self.neighbors = options["neighbors"]
+            if '.lnc' in i or '.ldc' in i:
+                if '.dist.' in i:
+                    if not files_imported['distances']:
+                        self._distance_matrix = iol.read_dataarray(i)
+                        files_imported['distances'] = i
+                    else:
+                        raise EnvironmentError("Already imported the distances dataarray with " + files_imported['distances'] + ", current file : " + i)
+
+                elif '.voxels.' in i:
+                    if not files_imported['voxels']:
+                        self._voxels = iol.read_dataset(i)
+                        files_imported['voxels'] = i
+                    else:
+                        raise EnvironmentError("Already imported the vectors dataset with " + files_imported['voxels'] + ", current file : " + i)
+
+                elif '.options.' in i:
+                    if not files_imported['options']:
+                        options = iol.read_dict(i)
+                        self.neighbors = options["neighbors"]
+
+                        files_imported['options'] = i
+                    else:
+                        raise EnvironmentError("Already imported the options dict with " + files_imported['options'] + ", current file : " + i)
+
+                else:
+                    raise EnvironmentError("Restore not implemented for this file : " + i)
 
     def add_local_op(self, op_type="onsager", nb_ave=1) -> None:
         """Will add a local order parameter to the voxels dataset. Local order parameters are computed over each voxel.
@@ -259,9 +280,9 @@ class local( trajectory ):
         options = {"neighbors":self.neighbors,
                    }
         if iol.is_valid_name(name):
-            iol.save_xarray(self._distance_matrix, path, name+"_distances")
-            iol.save_xarray(self._voxels, path, name+"_voxels")
-            iol.save_dict(options, path, name+"_l-options")
+            iol.save_xarray(self._distance_matrix, path, name+".dist.lnc")
+            iol.save_xarray(self._voxels, path, name+".voxels.lnc")
+            iol.save_dict(options, path, name+".options.ldc")
 
     def get_distances_da(self) -> xr.DataArray:
         """Getter for the _distance_matrix dataarray

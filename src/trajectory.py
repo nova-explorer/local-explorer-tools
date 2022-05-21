@@ -34,7 +34,7 @@ class trajectory( object ): ## need object here?
         if restore:
             self._print("\tRestoring trajectory...\n")
 
-            iol.check_file_list(self.file_list, pattern ,accepted=['atoms.nc', 'vectors.nc', "t-options.dict", "distances.nc", "voxels.nc", "l-options.dict"])
+            # iol.check_file_list(self.file_list, pattern ,accepted=['atoms.nc', 'vectors.nc', "t-options.dict", "distances.nc", "voxels.nc", "l-options.dict"])
 
             self.__restore_trajectory()
         else:
@@ -244,16 +244,37 @@ class trajectory( object ): ## need object here?
         TODO: a way to make sure dataset integrity is good and a way to make sure all of the class is properly restored.
         """
         ## Could do dataset checkup to verify integrity
+        files_imported = {'atoms':None, 'vectors':None, 'options':None}
+
         for i in self.file_list:
-            if "atoms.nc" in i:
-                self._atoms = iol.read_dataset(i)
-            elif "vectors.nc" in i:
-                self._vectors = iol.read_dataset(i)
-            elif "t-options.dict" in i:
-                options = iol.read_dict(i)
-                self.exclude = options["exclude"]
-                self.vector_patterns = options["vector_patterns"]
-                self.restore = True
+            if '.tnc' in i or '.tdc' in i:
+                if '.atoms.' in i:
+                    if not files_imported['atoms']:
+                        self._atoms = iol.read_dataset(i)
+                        files_imported['atoms'] = i
+                    else:
+                        raise EnvironmentError("Already imported the atoms dataset with " + files_imported['atoms'] + ", current file : " + i)
+
+                elif '.vectors.' in i:
+                    if not files_imported['vectors']:
+                        self._vectors = iol.read_dataset(i)
+                        files_imported['vectors'] = i
+                    else:
+                        raise EnvironmentError("Already imported the vectors dataset with " + files_imported['vectors'] + ", current file : " + i)
+
+                elif '.options.' in i:
+                    if not files_imported['options']:
+                        options = iol.read_dict(i)
+                        self.exclude = options["exclude"]
+                        self.vector_patterns = options["vector_patterns"]
+                        self.restore = True
+
+                        files_imported['options'] = i
+                    else:
+                        raise EnvironmentError("Already imported the options dict with " + files_imported['options'] + ", current file : " + i)
+
+                else:
+                    raise EnvironmentError("Restore not implemented for this file : " + i)
 
     def _print(self, text): ## __print()?
         """A method to print if updates is enabled (True) and not print if not enabled (False). Will be used a lot by child classes too.
@@ -275,9 +296,9 @@ class trajectory( object ): ## need object here?
                    "vector_patterns":self.vector_patterns,
                    "file_list":self.file_list}
         if iol.is_valid_name(name):
-            iol.save_xarray(self._atoms, path, name+"_atoms")
-            iol.save_xarray(self._vectors, path, name+"_vectors")
-            iol.save_dict(options, path, name+"_t-options")
+            iol.save_xarray(self._atoms, path, name+".atoms.tnc")
+            iol.save_xarray(self._vectors, path, name+".vectors.tnc")
+            iol.save_dict(options, path, name+".options.tdc")
 
     def get_atoms_ds(self) -> xr.Dataset:
         """Getter for the _atoms dataset.
