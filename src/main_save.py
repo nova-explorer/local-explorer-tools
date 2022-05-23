@@ -1,12 +1,12 @@
-#!/bin/python
-
-from cgi import test
-from clusters import cluster
+# !/bin/python
 from time import time
+import os, psutil
+from glob import glob
 
+from voxels import local
+
+process = psutil.Process(os.getpid())
 start = time()
-
-import matplotlib.pyplot as plt
 
 try:
     shell = get_ipython().__class__.__name__
@@ -17,25 +17,23 @@ except NameError:
 
 print("Running in:", shell)
 
-testing = cluster(path=prefix+"trajectories/",
-                   pattern="sma.dump.gz",
-                   exclude=[1],
-                   vector_patterns=[ [2,3,2] ],
-                   restore_trajectory=False,
-                   updates=True,
-                   neighbors=10,
-                   restore_locals=False,
-                   vector_descriptors=["angle"],
-                   voxel_descriptors=False,
-                   distance_descriptor=True,
-                   director=False,
-                   normalization="max"
-                   )
+testing = local(path = prefix+'trajectories/',
+                    pattern = 'sma.dump',
+                    exclude = [1],
+                    vector_patterns = [ [5, 6, 5] ],
+                    restore_trajectory = False,
+                    updates = True,
+                    neighbors = 10,
+                    restore_locals = False,
+                    )
 
-testing.add_local_op(op_type='onsager', nb_ave=1)
+testing.add_local_op(op_type = 'onsager', nb_ave = 1)
+testing.add_local_op(op_type = 'onsager', nb_ave = 2)
 
-testing.save_trajectory("testing", prefix+"save/")
-testing.save_local("testing", prefix+"save/")
+
+testing.save_trajectory('testing', prefix+'save/restores')
+testing.save_local('testing', prefix+'save/restores')
 
 stop = time()
 print("\n\nRUNTIME:", stop-start)
+print("END MEMORY USAGE:", process.memory_info().rss / 1024**2, "MB")

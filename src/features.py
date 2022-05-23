@@ -30,7 +30,7 @@ class features( local ):
             vector_descriptors (list of str, optional): List of variables to take in from the trajectory._vectors dataset. Defaults to ["cm","angle"].
             voxel_descriptors (list of str, optional): List of variables to take in from the local._voxels dataset. Defaults to ["cm", "angle"].
             distance_descriptor (bool, optional): Whether or not to take in the distance matrix from local._distance_matrix. Defaults to True.
-            director (bool, optional):Whether or not only one xyz component should be taken into account. If false, all xyz components are used. Defaults to False.
+            director (list of str or 'auto' or False, optional): Whether or not only one xyz component should be taken into account. If list of str, should be like ['x','y']. If 'auto', director will be choosen using the longuest dimension. TODO: more doc on that. If false, all xyz components are used.Defaults to False.
             normalization (str, optional): Normalization technique. Choices are: min-max, max and standardize. See methods for more details. Defaults to "standardize".
         TODO: save and restore features
         """
@@ -51,47 +51,46 @@ class features( local ):
             voxel (list of str): List of variables to take in from the local._voxels dataset.
             distance (bool): Whether or not to take in the distance matrix from local._distance_matrix.
             director (str or bool): Whether or not only one xyz component should be taken into account. If false, all xyz components are used.
-            TODO: multiple xyz component
         Returns:
             xr.Dataset: Raw features dataset. xyz coordinates are removed and if multiple are take into account, _x (or _y, _z) will be added to the feature's name.
         """
-        ## same dimensions?
-        data = xr.Dataset()
+        features = xr.Dataset()
 
-        if vector:
-            for name in vector:
-                if "comp" in self._vectors[name].coords:
-                    if director:
-                        data[name] = self._vectors[name].sel(comp=director)
+        if not director: # director is False or None
+            director = ['x', 'y', 'z']
+        elif director == 'auto':
+            director = self.__auto_director(0.5) # could be argument
+        elif isinstance(director, list): # director is specified by user and already formated, we do nothing
+            for i in director:
+                if i not in ['x','y','z']:
+                    raise ValueError('User specified director but it isnt either x, y or z:' + i)
+        else:
+            raise ValueError('Specified director is not valid :' + director)
+
+        data = [self._vectors, self._voxels, xr.Dataset({'distance':self._distance_matrix})]
+        to_import = [ vector, voxel, ['distance'] if distance else False ]
+
+        for i, current_ds in enumerate(data):
+            if to_import[i]:
+                for name in to_import[i]:
+                    if not "comp" in current_ds[name].coords:
+                        features[name] = current_ds[name]
                     else:
-                        for i in self.comps:
-                            data[name + "_" + i] = self._vectors[name].sel(comp=i)
-                else:
-                    data[name] = self._vectors[name]
+                        for comp in director:
+                            features[name + '_' + comp] = current_ds[name].sel(comp=comp)
 
-        if voxel:
-            for name in voxel:
-                if "comp" in self._voxels[name].coords:
-                    if director:
-                        data[name] = self._voxels[name].sel(comp=director)
-                    else:
-                        for i in self.comps:
-                            data[name + "_" + i] = self._voxels[name].sel(comp=i)
-                else:
-                    data[name] = self._voxels[name]
+        return features.drop_vars('comp')
 
-        if distance:
-            name = "distance"
-            if "comp" in self._distance_matrix.coords:
-                if director:
-                    data[name] = self._distance_matrix.sel(comp=director) # vectors dont necessarily have director
-                else:
-                    for i in self.comps:
-                        data[name + "_" + i] = self._distance_matrix.sel(comp=i)
-            else:
-                data[name] = self._distance_matrix
+    def __auto_director(self, threshold):
+        bounds = self._atoms.bounds.mean(axis=0)
+        longuest = max(bounds)
 
-        return data.drop_vars('comp')
+        ratios = bounds / longuest
+        director = []
+        for i in ratios:
+            if i > threshold:
+                director.append(str(i.comp.values))
+        return director
 
     def __apply_symmetries(self) -> None:
         """Applies symmetries to the features. These symmetries are extremely system dependant. Check the methods with symmetry in the name for details.

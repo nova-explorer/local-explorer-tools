@@ -25,6 +25,7 @@ class local( trajectory ):
         ## end of copied from trajectory.py
             neighbors (int, optional): Number of neighbors to form voxels. A particle counts in it's own voxel, so you will see voxels of size +1 what you specify here. Defaults to 10.
             restore_locals (bool, optional): _If True, the input files will be read as a restore of the local class. Those input files need to have been created by the save_locals method. Defaults to False.
+            TODO: bug in IO for local OP. One character too many when more than 1 timestep
         """
 
         super().__init__(path, pattern, exclude, vector_patterns, restore_trajectory, updates)

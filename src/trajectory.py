@@ -20,7 +20,10 @@ class trajectory( object ): ## need object here?
             vector_patterns (nested list of int, optional): Patterns of types for defining vectors. Each element of the mother list is a vector pattern. Defaults to [[2,3,2]].
             restore (bool, optional): If True, the input files will be read as a restore of the trajectory class. Those input files need to have been created by the save_trajectory method. Defaults to False.
             updates (bool, optional): If True, prints will update the user of current progress. Defaults to True.
-        TODO: Attributes
+        TODO: -Attributes
+              -Check if timesteps repeat
+              -Check if no vectors are found
+              -IO for save
         """
 
         self.updates = updates
