@@ -28,15 +28,15 @@ testing = cluster(path = prefix+'save/restores/',
                   vector_descriptors = ['angle'],
                   voxel_descriptors = False,
                   distance_descriptor = True,
-                  director = 'auto',
+                  director = False,
                   normalization = "max"
                   )
-# features_final = testing.combine_features()
 
-# data = testing.clusterize(features_final, "KMedoids", n_clusters = [1, 2, 3, 4, 5])
-# data = testing.compute_coefficients(data, features_final, dopcev_type = 1)
-# testing.export_to_ovito(data, name = 'testing_KMedoids', path = prefix+'save/clusters/')
-# testing.coefficients_to_csv(data, name = 'testing_KMedoids.csv', path = prefix+'save', series_name = 'testing', write_style = 'wt')
+features_final = testing.combine_features()
+data = testing.clusterize(features_final, "KMedoids", n_clusters = [1, 2, 3, 4, 5])
+data = testing.compute_coefficients(data, features_final, dopcev_type = 1)
+testing.export_to_ovito(data, name = 'testing_KMedoids', path = prefix+'save/clusters/')
+testing.coefficients_to_csv(data, name = 'testing_KMedoids.csv', path = prefix+'save/', series_name = 'testing', write_style = 'wt')
 
 stop = time()
 print("\n\nRUNTIME:", stop-start)

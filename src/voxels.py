@@ -202,7 +202,7 @@ class local( trajectory ):
 
         TODO: a way to make sure dataset integrity is good and a way to make sure all of the class is properly restored.
         """
-        files_imported = {'distances':None, 'voxels':None, 'options':None}
+        files_imported = {'distances':None, 'voxels':None, 'options':None, 'rdf':None}
 
         for i in self.file_list:
             if '.lnc' in i or '.ldc' in i:
@@ -228,6 +228,13 @@ class local( trajectory ):
                         files_imported['options'] = i
                     else:
                         raise EnvironmentError("Already imported the options dict with " + files_imported['options'] + ", current file : " + i)
+
+                elif '.rdf.' in i:
+                    if not files_imported['rdf']:
+                        self._rdf = iol.read_dataarray(i)
+                        files_imported['rdf'] = i
+                    else:
+                        raise EnvironmentError("Already imported the rdf dataarray with " + files_imported['rdf'] + ", current file : " + i)
 
                 else:
                     raise EnvironmentError("Restore not implemented for this file : " + i)
@@ -271,6 +278,26 @@ class local( trajectory ):
         self._print("\n")
         self._voxels[data_name] = xr.DataArray( op_traj, coords=[self.timesteps, self.ids], dims=["ts", "id"] )
 
+    def add_rdf(self, cutoff, bins):
+        distances = np.sqrt( (self._distance_matrix**2).sum(axis=1) )
+        cutoff_array = np.linspace(0, cutoff, bins+1)
+
+        total_ts = len(self.timesteps)
+        total_id = len(self.ids)
+
+        rdf_traj = []
+        for cnt_ts, ts in enumerate(self.timesteps):
+            rdf_array = []
+            for cnt_id, i, in enumerate(self.ids):
+                self._print('\r\tComputing RDF on timestep {}/{} for id {}/{}'.format(cnt_ts+1, total_ts,
+                                                                                      cnt_id+1, total_id
+                                                                                      )
+                            )
+                rdf_array.append( cs.rdf(distances.sel(ts=ts, id=i), self._atoms.bounds.sel(ts=ts).prod().values, self.nb_atoms, cutoff_array) )
+            rdf_traj.append(rdf_array)
+        self._print('\n')
+        self.rdf = xr.DataArray(rdf_traj, coords=[self.timesteps, self.ids, cutoff_array[0:-1]], dims=['ts', 'id', 'distance'])
+
     def save_local(self, name, path="save/") -> None:
         """Saves local object in a netcdf file format. Will create 3 files: _distances trajectory dataarray, _voxels trajectory dataset and _t-options dictionary of the object options.
 
@@ -284,6 +311,10 @@ class local( trajectory ):
             iol.save_xarray(self._distance_matrix, path, name+".dist.lnc")
             iol.save_xarray(self._voxels, path, name+".voxels.lnc")
             iol.save_dict(options, path, name+".options.ldc")
+            try:
+                iol.save_xarray(self._rdf, path, name+".rdf.lnc")
+            except:
+                pass ## bit rough but it'll work
 
     def get_distances_da(self) -> xr.DataArray:
         """Getter for the _distance_matrix dataarray
@@ -292,6 +323,14 @@ class local( trajectory ):
             xr.DataArray: Redundant pairwise distance matrix of the vectors' center of mass trajectory
         """
         return self._distance_matrix
+
+    def get_rdf_da(self) -> xr.DataArray:
+        """_summary_
+
+        Returns:
+            xr.DataArray: _description_
+        """
+        return self._rdf
 
     def get_voxel_ds(self) -> xr.Dataset:
         """Getter for the _voxels dataset

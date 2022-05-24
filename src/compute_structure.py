@@ -19,9 +19,17 @@ def global_onsager(ds) -> xr.Dataset :
     op=1.5 * op - 0.5
     return op
 
-def rdf():
-    ## should do soon
-    return 0
+def rdf(distances, cell_volume, nb_atoms, bins) -> np.ndarray:
+    edges = bins[0:-1]
+    distances = distances.where(distances != 0, drop=True).where(distances <= max(bins), drop=True).values
+
+    increment = (bins[1] - bins[0])/2
+    hollow_sphere_volume = 4/3 * np.pi * ( (edges+increment)**3 - (edges-increment)**3 )
+    normalization = cell_volume / nb_atoms / hollow_sphere_volume
+
+    bin_count, _ = np.histogram(distances, bins)
+
+    return bin_count * normalization
 
 def voxel_onsager(ds) -> float:
     """Computes the Onsager order parameter of voxel i for a single timestep. the director is considered to be particle i.
