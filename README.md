@@ -82,7 +82,7 @@ Here is a transcript of the arguments available when generating the cluster obje
 
 
 ## Citation
-  so far nothing, just cite this github page and/or [contact me](couo2506@usherbrooke.ca).
+  so far nothing, just cite this github page and/or contact me using the first article below.
 
 ## References
 1. Regarding the systems studied here :
