@@ -2,10 +2,7 @@ from numpy import NaN
 import sklearn.cluster as sk_c
 import sklearn_extra.cluster as ske_c
 import sklearn.metrics as sk_m
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 import xarray as xr
-import numpy as np
 
 from features import features
 import io_local as iol
@@ -27,7 +24,7 @@ class cluster( features ):
 
     def __init__(self, path = "./", pattern = "ellipsoid.*", exclude = None, vector_patterns = [[2, 3, 2]], restore_trajectory = False, updates = True,
                  neighbors = 10, restore_locals = False,
-                 vector_descriptors = ["cm", "angle"], voxel_descriptors = ["cm", "angle"], distance_descriptor = True, director = False, normalization = "standardize"
+                 vector_descriptors = ["cm", "angle"], voxel_descriptors = ["cm", "angle"], distance_descriptor = True, director = False, normalization = "max"
                  ) -> None:
         """Computes clusters and saves them in the clustraj dataset. Contains many methods related to clustering.
 
@@ -44,8 +41,8 @@ class cluster( features ):
             vector_descriptors (list of str, optional): List of variables to take in from the trajectory._vectors dataset. Defaults to ["cm", "angle"].
             voxel_descriptors (list of str, optional): List of variables to take in from the local._voxels dataset. Defaults to ["cm", "angle"].
             distance_descriptor (bool, optional): Whether or not to take in the distance matrix from local._distance_matrix. Defaults to True.
-            director (bool, optional):Whether or not only one xyz component should be taken into account. If false, all xyz components are used. Defaults to False.
-            normalization (str, optional): Normalization technique. Choices are: min-max, max and standardize. See methods for more details. Defaults to "standardize".
+            director (bool, optional): Whether or not only one xyz component should be taken into account. If false, all xyz components are used. Defaults to False.
+            normalization (str, optional): Normalization technique. Choices are: min-max, max, zscores_abs and zscores_std. See methods for more details. Defaults to "max".
         ## end of copied from features.py
         TODO: Generalisation of n_clusters to generic clustering parameters
         """

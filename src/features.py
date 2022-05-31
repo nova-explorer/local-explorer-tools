@@ -11,9 +11,9 @@ class features( local ):
 
     ## missing much communication to user
 
-    def __init__(self, path = "./", pattern = "ellipsoid.*", exclude = None, vector_patterns = [[2, 3, 2]], restore_trajectory = False, updates = True, 
-                 neighbors = 10, restore_locals = False, 
-                 vector_descriptors = ["cm", "angle"], voxel_descriptors = ["cm", "angle"], distance_descriptor = True, director = False, normalization = "standardize" ## proximity matrix, distance function?
+    def __init__(self, path = "./", pattern = "ellipsoid.*", exclude = None, vector_patterns = [[2, 3, 2]], restore_trajectory = False, updates = True,
+                 neighbors = 10, restore_locals = False,
+                 vector_descriptors = ["cm", "angle"], voxel_descriptors = ["cm", "angle"], distance_descriptor = True, director = False, normalization = "max",
                  ) -> None:
         """Computes features as a kernel matrix from the voxels dataset and vectors dataset from a LAMMPS trajectory. Pairwise distance is used to create the kernel matrix and features and symmetrized and normalized.
 
@@ -32,7 +32,7 @@ class features( local ):
             voxel_descriptors (list of str, optional): List of variables to take in from the local._voxels dataset. Defaults to ["cm", "angle"].
             distance_descriptor (bool, optional): Whether or not to take in the distance matrix from local._distance_matrix. Defaults to True.
             director (list of str or 'auto' or False, optional): Whether or not only one xyz component should be taken into account. If list of str, should be like ['x', 'y']. If 'auto', director will be choosen using the longuest dimension. TODO: more doc on that. If false, all xyz components are used.Defaults to False.
-            normalization (str, optional): Normalization technique. Choices are: min-max, max and standardize. See methods for more details. Defaults to "standardize".
+            normalization (str, optional): Normalization technique. Choices are: min-max, max, zscores_abs and zscores_std. See methods for more details. Defaults to "max".
         TODO: save and restore features
         """
         super().__init__(path, pattern, exclude, vector_patterns, restore_trajectory, updates, neighbors, restore_locals)
