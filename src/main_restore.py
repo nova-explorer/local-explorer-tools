@@ -32,10 +32,13 @@ testing = cluster(path = prefix+'save/restores/',
                   normalization = "max"
                   )
 
-features_final = testing.combine_features()
-data = testing.clusterize(features_final, "KMedoids", n_clusters = [1, 2, 3, 4, 5])
+a = testing.filter_features(0.3, 2, 0.1)
+# a = testing.get_features_ds()
+
+features_final = testing.combine_features(a)
+data = testing.clusterize(features_final, "KMedoids", n_clusters = [1,2])
 data = testing.compute_coefficients(data, features_final, dopcev_type = 1)
-testing.export_to_ovito(data, name = 'testing_KMedoids', path = prefix+'save/clusters/')
+testing.export_to_ovito(data, name = 'testing_filter', path = prefix+'save/clusters/')
 testing.coefficients_to_csv(data, name = 'testing_KMedoids.csv', path = prefix+'save/', series_name = 'testing', write_style = 'wt')
 
 stop = time()

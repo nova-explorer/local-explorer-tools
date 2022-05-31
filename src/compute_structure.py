@@ -11,17 +11,17 @@ def global_onsager(ds) -> xr.Dataset :
         xr.Dataset: Dataset containing the order parameter for all timesteps.
         TODO: not sure if return is a dataset or a dataarray.
     """
-    director = ds.coord.mean(dim='id')
-    director = director / np.sqrt(np.square(director).sum(dim=['comp']))
+    director = ds.coord.mean(dim = 'id')
+    director = director / np.sqrt(np.square(director).sum(dim = ['comp']))
 
     data = ds.coord
-    op = np.square(data.dot(director, dims=['comp'])).mean(dim=['id'])
-    op=1.5 * op - 0.5
+    op = np.square(data.dot(director, dims = ['comp'])).mean(dim = ['id'])
+    op = 1.5 * op - 0.5
     return op
 
 def rdf(distances, cell_volume, nb_atoms, bins) -> np.ndarray:
     edges = bins[0:-1]
-    distances = distances.where(distances != 0, drop=True).where(distances <= max(bins), drop=True).values
+    distances = distances.where(distances != 0, drop = True).where(distances <= max(bins), drop = True).values
 
     increment = (bins[1] - bins[0])/2
     hollow_sphere_volume = 4/3 * np.pi * ( (edges+increment)**3 - (edges-increment)**3 )
@@ -47,10 +47,10 @@ def voxel_onsager(ds) -> float:
     nb_neigh = len(neigh)
 
     for i in neigh:
-        op += ( 3 * np.dot(data[0],data[i])**2 - 1 ) / 2 / nb_neigh
+        op += ( 3 * np.dot(data[0], data[i])**2 - 1 ) / 2 / nb_neigh
     return op
 
-## not the most useful local order parameters
+# # not the most useful local order parameters
 def voxel_common_neigh():
     return 0
 

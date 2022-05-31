@@ -18,7 +18,7 @@ except NameError:
 print("Running in:", shell)
 
 testing = local(path = prefix+'trajectories/',
-                    pattern = 'sma.dump',
+                    pattern = 'poly.dump',
                     exclude = [1],
                     vector_patterns = [ [5, 6, 5] ],
                     restore_trajectory = False,
@@ -29,6 +29,7 @@ testing = local(path = prefix+'trajectories/',
 
 testing.add_local_op(op_type = 'onsager', nb_ave = 1)
 testing.add_local_op(op_type = 'onsager', nb_ave = 2)
+testing.add_rdf(20, 200)
 
 
 testing.save_trajectory('testing', prefix+'save/restores')

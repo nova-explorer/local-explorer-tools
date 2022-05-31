@@ -8,8 +8,8 @@ import compute_structure as cs
 
 class trajectory( object ): ## need object here?
 
-    def __init__(self,
-                 path="./", pattern="ellipsoid.*", exclude=None, vector_patterns=[[2,3,2]], restore=False, updates=True
+    def __init__(self, 
+                 path = "./", pattern = "ellipsoid.*", exclude = None, vector_patterns = [[2, 3, 2]], restore = False, updates = True
                  ) -> None:
         """LAMMPS trajectory converted to an xarray dataset. Additionally ellipsoidal particles are defined as vectors and stored in another dataset for further computation.
 
@@ -17,7 +17,7 @@ class trajectory( object ): ## need object here?
             path (str, optional): Path to input files. Input files can be either LAMMPS trajectory dumps or previously saved trajectory using the save_trajectory method. Defaults to "./".
             pattern (str, optional): Pattern matching input files. Input files can be either LAMMPS trajectory dumps or previously saved trajectory using the save_trajectory method. Defaults to "ellipsoid.*".
             exclude (list of int or None/False, optional): Types to exclude from the trajectory. Defaults to None.
-            vector_patterns (nested list of int, optional): Patterns of types for defining vectors. Each element of the mother list is a vector pattern. Defaults to [[2,3,2]].
+            vector_patterns (nested list of int, optional): Patterns of types for defining vectors. Each element of the mother list is a vector pattern. Defaults to [[2, 3, 2]].
             restore (bool, optional): If True, the input files will be read as a restore of the trajectory class. Those input files need to have been created by the save_trajectory method. Defaults to False.
             updates (bool, optional): If True, prints will update the user of current progress. Defaults to True.
         TODO: -Attributes
@@ -36,9 +36,6 @@ class trajectory( object ): ## need object here?
 
         if restore:
             self._print("\tRestoring trajectory...\n")
-
-            # iol.check_file_list(self.file_list, pattern ,accepted=['atoms.nc', 'vectors.nc', "t-options.dict", "distances.nc", "voxels.nc", "l-options.dict"])
-
             self.__restore_trajectory()
         else:
             self._print("\tReading trajectory...\n")
@@ -184,10 +181,10 @@ class trajectory( object ): ## need object here?
             self._print( "\r\tComputing vectors... {:.0%}".format((i+1)/total_ids) ) ## change to percent
             for pattern in self.vector_patterns:
 
-                if i <= total_ids-len(pattern) and self.__is_fit_pattern( data.isel( id=range(i,i+len(pattern)) ).type, pattern ):
+                if i <= total_ids-len(pattern) and self.__is_fit_pattern( data.isel( id = range(i, i+len(pattern)) ).type, pattern ):
 
-                    atom0 = data.drop_vars(droppers).isel(id=i)
-                    atom1 = data.drop_vars(droppers).isel(id=i+len(pattern)-1)
+                    atom0 = data.drop_vars(droppers).isel(id = i)
+                    atom1 = data.drop_vars(droppers).isel(id = i+len(pattern)-1)
 
                     v = atom1 - atom0
                     norm = np.sqrt(v.xu**2 + v.yu**2 + v.zu**2)
@@ -225,19 +222,19 @@ class trajectory( object ): ## need object here?
         """
         flag = True
         for i in range(len(pattern)):
-            self.__check_type_consistency(types.isel(id=i))
-            if types.isel(id=i, ts=0) != pattern[i]:
+            self.__check_type_consistency(types.isel(id = i))
+            if types.isel(id = i, ts = 0) != pattern[i]:
                 flag = False
         return flag
 
     def __check_type_consistency(self, types):
-        type_0 = types.isel(ts=0).values
+        type_0 = types.isel(ts = 0).values
         for i in types.ts:
-            if type_0 != types.sel(ts=i).values:
-                raise IndexError("type is not consistent across simulation for id {id}. ts 0: {type0}, ts {ts1}: {type1}.".format(id=types.id,
-                                                                                                                                  type0=type_0,
-                                                                                                                                  ts1=i,
-                                                                                                                                  type1=types.sel(ts=i).values,
+            if type_0 != types.sel(ts = i).values:
+                raise IndexError("type is not consistent across simulation for id {id}. ts 0: {type0}, ts {ts1}: {type1}.".format(id = types.id,
+                                                                                                                                  type0 = type_0,
+                                                                                                                                  ts1 = i,
+                                                                                                                                  type1 = types.sel(ts = i).values,
                                                                                                                                   )
                                  )
 
@@ -286,9 +283,9 @@ class trajectory( object ): ## need object here?
             text (str): Text to print.
         """
         if self.updates:
-            print(text, end="\r")
+            print(text, end = "\r")
 
-    def save_trajectory(self, name, path="save/") -> None:
+    def save_trajectory(self, name, path = "save/") -> None:
         """Saves trajectory object in a netcdf file format. Will create 3 files: _atoms trajectory dataset, _vectors trajectory dataset and _t-options dictionary of the object options.
 
         Args:

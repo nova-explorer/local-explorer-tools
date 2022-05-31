@@ -5,7 +5,7 @@ import re
 import xarray as xr
 import ast
 
-## TODO : with open is better than open since it closes automatically.
+# # TODO : with open is better than open since it closes automatically.
 
 def create_file_list(path, file_pattern) -> list:
     """Creates a list of files matching file_pattern.
@@ -160,7 +160,7 @@ def save_dict(dict, path, name) -> None:
     f.write(str(dict))
     f.close()
 
-def frame_to_dump(data, name="cluster", path="save/clusters/") -> None:
+def frame_to_dump(data, name = "cluster", path = "save/clusters/") -> None:
     """Exports a frame from a clustered trajectory and saves it in a LAMMPS dump file format.
 
     Args:
@@ -189,14 +189,14 @@ def frame_to_dump(data, name="cluster", path="save/clusters/") -> None:
 
     f.write( 'ITEM: BOX BOUNDS pp pp pp\n' )
     for comp in data.comp:
-        f.write( '0 ' + str(data.bounds.sel(comp=comp).values) + '\n' )
+        f.write( '0 ' + str(data.bounds.sel(comp = comp).values) + '\n' )
 
     f.write( 'ITEM: ATOMS id type ' + ' '.join(map(str, data_vars)) + '\n')
     for i in data.id.values:
         line = str(i) + ' ' # id
-        line += str(data.labels.sel(id=i).values) + ' ' # type
+        line += str(data.labels.sel(id = i).values) + ' ' # type
         for j in data_vars:
-            line += str(data[j].sel(id=i).values) + ' ' # atom properties
+            line += str(data[j].sel(id = i).values) + ' ' # atom properties
         f.write(line + '\n')
     f.write('\n')
 
