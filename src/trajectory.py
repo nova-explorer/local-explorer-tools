@@ -1,143 +1,119 @@
-"""
-Classes for importing LAMMPS atom trajectory into a xarray dataset. The trajectory class also has a dataset with ellipsoid vectors.
-traj_options contains all the inputs for generating the trajectory class.
-
-Usage: traj_opt = t.trajectory_options(path = "./trajectories/",
-                                       file_pattern = "sma.dump.gz",
-                                       exclude_types = [1],
-                                       monomer_types = 3)
-       traj = t.trajectory(traj_opt)
-       traj.save_trajectory(path = "./save/")
-Accessing data:
-       traj.vectors.cm
-       traj.vectors.coord
-       traj.atoms.xu
-
-Requires modules: xarray
-                  numpy
-                  glob
-                  re
-                  pandas
-                  gzip
-
-Requires scripts: compute_op
-                  io_local
-
-TODO: * save options
-      * optimize reading file - > dataset process
-      * more verbosity
-      * test/remove trim_to_types method
-      * add nb_atoms to the dataset
-"""
 import xarray as xr
 import numpy as np
-from glob import glob
 import re
 import pandas as pd
-import gzip as gz
 
-import compute_op as cop
-import io_local as io
+import io_local as iol
+import compute_structure as cs
 
-class trajectory():
-    """Generates trajectory
+class trajectory( object ): ## need object here?
 
-    Args:
-        - options (trajectory_options): Contains options for reading the trajectory files
-
-    Attributes:
-        - Arguments
-        - atoms (xarray.Dataset): Contains the trajectory information of the atoms as written in the LAMMPS files.
-        - vectors (xarray.Dataset): Contains the trajectory of the vectors of the monomers.
-    """
-    def __init__(self, options):
-        """Creates the class. Creates the atoms and vectors Datasets.
+    def __init__(self, 
+                 path = "./", pattern = "ellipsoid.*", exclude = None, vector_patterns = [[2, 3, 2]], restore = False, updates = True
+                 ) -> None:
+        """LAMMPS trajectory converted to an xarray dataset. Additionally ellipsoidal particles are defined as vectors and stored in another dataset for further computation.
 
         Args:
-            - options (trajectory_options): Contains the options for reading the trajectory files
+            path (str, optional): Path to input files. Input files can be either LAMMPS trajectory dumps or previously saved trajectory using the save_trajectory method. Defaults to "./".
+            pattern (str, optional): Pattern matching input files. Input files can be either LAMMPS trajectory dumps or previously saved trajectory using the save_trajectory method. Defaults to "ellipsoid.*".
+            exclude (list of int or None/False, optional): Types to exclude from the trajectory. Defaults to None.
+            vector_patterns (nested list of int, optional): Patterns of types for defining vectors. Each element of the mother list is a vector pattern. Defaults to [[2, 3, 2]].
+            restore (bool, optional): If True, the input files will be read as a restore of the trajectory class. Those input files need to have been created by the save_trajectory method. Defaults to False.
+            updates (bool, optional): If True, prints will update the user of current progress. Defaults to True.
+        TODO: -Attributes
+              -Check if timesteps repeat
+              -Check if no vectors are found
+              -IO for save
         """
-        self.options = options
-        if self.options.restore:
-            self.restore_trajectory()
+
+        self.updates = updates
+
+        self.path = path
+        self.pattern = pattern
+        self.file_list = iol.create_file_list(path, pattern)
+
+        self._print( "\tFile list created and containing {} files\n".format(len(self.file_list)) )
+
+        if restore:
+            self._print("\tRestoring trajectory...\n")
+            self.__restore_trajectory()
         else:
-            self.atoms = self.read_traj()
-            self.vectors = self.add_vectors()
-            self.vectors = cop.qmatrix(self.vectors)
-        # v_traj = self.trim_to_types(self.full_traj, self.options.monomer_types['atom']) ## needs testing
-        # delimiters = self.trim_to_types(self.full_traj, self.options.monomer_types['del']) ## needs testing
+            self._print("\tReading trajectory...\n")
 
-    def read_traj(self):
-        """Creates the atoms dataset by reading the LAMMPS trajectory files.
+            self.exclude = exclude ## could be not stored in the object and just passed as argument to __read_dumps() but wouldn't be able to save it with save_trajectory() afterwards.
+            self.vector_patterns = vector_patterns
 
-        Options:
-            - file_list (list of strings): Contains the files that will be read and converted to a Dataset
-            - exclude_types (list of ints): Atoms with type that matches any in this list will not be imported into the atoms Dataset
+            self._atoms = self.__read_dumps()
+
+            self._vectors = self.__compute_vectors()
+            self._vectors['op'] = cs.global_onsager(self._vectors)
+
+        self._print("\tTrajectory done!\n")
+
+    def __read_dumps(self) -> xr.Dataset:
+        """Reads the LAMMPS trajectory dump files and turns them in a dataset array.
 
         Returns:
-            - xarray.Dataset: Dataset that contains the trajectory of the atoms contained in the files. Classed by the coordinates ts(current timestep of the atoms data), id(atom id of the current atom) and comp(x, y and z coordinates when needed).
+            xr.Dataset: Trajectory dataset. It will have every properties found in the dump files in function of all particle ids and timesteps.
         """
-        bounds = {'x':[], 'y':[], 'z':[]}
-        bounds_list = []
-        bounds_array = []
         comp = ['x', 'y', 'z']
-
         nb_atoms = None
         step = None
+        bounds_array = []
         timestep = []
         data = []
-        for filename in self.options.file_list: # For each file in file_list
-            if re.search('.gz', filename): # if the file is compressed with gz
-                f = gz.open(filename, 'rt')
-            else:
-                f = open(filename, 'rt')
-            file = f.readlines()
-            f.close()
 
-            cnt = 0 # serves as the line counter
-            # scans for the line with the properties of the atoms
-            while not re.search('ITEM: ATOMS', str(file[cnt])): # str() only serves to suppress pyright overload error.
-                cnt += 1
-            coordinates = file[cnt].strip().split() [2:] # Dataset variables. The 1st 3 are skipped
+        for filename in self.file_list:
+            file = iol.read_file(filename)
 
-            for i, line in enumerate(file): # loop over the lines in the current file
+        coordinates = self.__get_variable_names(file)
 
-                if line.strip() == 'ITEM: TIMESTEP':
-                    step = int(file[i+1])
+        for i, line in enumerate(file):
+            line = line.strip()
+            if line == "ITEM: TIMESTEP":
+                step = int(file[i+1])
+            elif line == "ITEM: NUMBER OF ATOMS":
+                nb_atoms = int(file[i+1])
+            elif line == "ITEM: BOX BOUNDS pp pp pp":
+                bounds = []
+                for j in range(len(comp)):
+                    bounds.append([ float(val) for val in file[i+j+1].strip().split() ])
+                bounds_array.append([ j[1] - j[0] for j in bounds ])
+            elif re.search("ITEM: ATOMS", str(line)):
+                # it's easier to convert numeric strings in dataframe than to a dataset (from my knowledge). So here the text for 1 timestep is sent to a dataframe, which we make a list of. Then later we transform those dataframes to a dataset (conversion is builtin the dataset object)
+                data.append(self.__lines_to_df(file[i+1:i+nb_atoms+1], coordinates))
+                timestep.append(step)
 
-                elif line.strip() == 'ITEM: NUMBER OF ATOMS':
-                    nb_atoms = int(file[i+1])
-
-                elif line.strip() == 'ITEM: BOX BOUNDS pp pp pp':
-                    bounds['x'] = [float(val) for val in file[i+1].strip().split() ]
-                    bounds['y'] = [float(val) for val in file[i+2].strip().split() ]
-                    bounds['z'] = [float(val) for val in file[i+3].strip().split() ]
-
-                elif re.search('ITEM: ATOMS', str(line)): # str() only serves to suppress pyright overload error.
-                    data.append(self.lines_to_df(file[i+1:i+nb_atoms-1], coordinates)) # will put the lines with all the atoms property in a pandas dataframe which is appended in a list for all timesteps
-                    timestep.append(step) # list with all the timesteps
-
-                    bounds_list = []
-                    for i in bounds:
-                        bounds_list.append(bounds[i][1] - bounds[i][0]) # just reformats the bounds to a good format for the atoms dataset
-                    bounds_array.append(bounds_list)
-
-        data = self.dfs_to_ds(data, timestep)
+        data = self.__dfs_to_ds(data, timestep)
         data['bounds'] = xr.DataArray(bounds_array, coords = [data.ts, comp], dims = ['ts', 'comp'])
 
         return data
 
-    def lines_to_df(self, lines, column_names):
-        """Takes the lines containing atoms properties for a single timestep and imports them in a dataframe
+    def __get_variable_names(self, file) -> list:
+        """Retrieves the names of the trajectory properties in the dump file. They need to be consistent accross dump files.
 
         Args:
-            - lines (list of strings): Contains the properties of the atoms. Each string is one atom.
-            - column_names (list of strings): Contains the names of the atoms properties.
-
-        Options:
-            - exclude_types (list of ints): Atoms with type that matches any in this list will not be imported into the atoms Dataset
+            file (list of str): Content of the dump file.
 
         Returns:
-            pandas DataFrame: Dataframe with the properties of the atoms. Each column is a property and each index is an atom.
+            list of str: names of the trajectory properties.
+        TODO: Naming for those "properties" isnt consistent in code/documentation
+        """
+        counter = 0
+        # scans for the line with the properties of the atoms
+        while not re.search("ITEM: ATOMS", str(file[counter])):
+            counter += 1
+        return file[counter].strip().split() [2:]
+
+    def __lines_to_df(self, lines, column_names) -> pd.DataFrame:
+        """Converts a list of strings to a dataframe.
+
+        Args:
+            lines (list of str): Lines in the input files corresponding to 1 timestep.
+            column_names (list of str): Names of the particle properties of the trajectory.
+
+        Returns:
+            pd.DataFrame: Dataframe containing the trajectory properties for all particles of 1 timestep.
         """
         data = []
         type_id = None
@@ -147,14 +123,17 @@ class trajectory():
             if name == 'type':
                 type_id = i
 
-        for i in lines:
-            line = i.strip().split()
-            if self.options.exclude_types: # will not skip types if exclude_types is None or False
-                for j in self.options.exclude_types:
-                    if int(line[type_id]) != int(j):
+        if not self.exclude:
+            for i in lines:
+                data.append(i.strip().split())
+        else:
+            for i in lines:
+                line = i.strip().split()
+                if self.exclude:
+                    if int(line[type_id]) not in self.exclude:
+                    # for j in self.exclude:
+                    #     if int(line[type_id]) != int(j):
                         data.append(line)
-            else:
-                data.append(line)
 
         df = pd.DataFrame(data, columns = column_names)
         df = df.apply(pd.to_numeric)
@@ -163,193 +142,176 @@ class trajectory():
 
         return df
 
-    def dfs_to_ds(self, dfs, list_ids):
-        """Turns a list of dataframes into a dataset
+    def __dfs_to_ds(self, dfs, timesteps) -> xr.Dataset:
+        """Converts a list of dataframes to a dataset
 
         Args:
-            - dfs (list of dataframes): Contains the dataframes that needs to be converted to a dataset
-            - list_ids (list of ints): Contains the coordinate of each item in dfs
+            dfs (list of dataframes): Dataframes of particle properties for all the timesteps.
+            timesteps (list of ints): List with the timesteps of the dataframes in dfs. Both dfs and timesteps need to be in same order.
 
         Returns:
-            Dataset: Dataset with each variables matching the dataframes' columns. The coordinates match list_ids and the dataframes' index
+            xr.Dataset: Trajectory dataset. It will have every properties found in the dump files in function of all particle ids and timesteps.
         """
         ds = []
         for i, df in enumerate(dfs):
             ds.append(xr.Dataset())
             for j in df:
                 ds[i][j] = df[j].to_xarray()
-            ds[i].update( {'ts': ( 'ts', [list_ids[i]] )} )
+            ds[i].update( {'ts': ( 'ts', [timesteps[i]] )} )
         return xr.concat(ds, dim = 'ts')
 
-    def trim_to_types(self, traj, types):
-        """removes all but those types
-            Need to check if relevant
-            TODO: Need to test many subsequent trims
-        """
-        traj = traj.where( traj.type.isin(types), drop = True )
-        return traj
+    def __compute_vectors(self) -> xr.Dataset:
+        """Computes the trajectory of vectors. Vectors are sequence of particles defined by vector_patterns. Will also compute some properties of said vectors and add them to the trajectory properties.
 
-    def add_vectors(self):
-        """Creates a Dataset containing vectors information based on the atoms dataset
-        Options:
-            - monomer_types
         Returns:
-            - xarray.Dataset: Contains vector trajectories for specified monomer(s). Has same coordinates as the atoms dataset
-
-        TODO:
-            - streamline the vector extremities determination to match a general behavior and not just the ellispoid+pseudoatom template
+            xr.Dataset: Trajectory of vectors. Depends of timesteps, xyz coordinate and particle ids. It's properties are center of mass (cm), norm of vector (norm), angle with respect to xyz coordinates (euler angles?) (angle) and vector coordinates (coord). Center of mass is computed with the 2 extremum particles. Id is that of the center particle.
         """
-        data = self.atoms # just because it's shorter
-        mono_type = self.options.monomer_types
-        droppers = []
+        data = self._atoms
         coords = ['x', 'y', 'z']
-
-        # creates a list containing all the columns that don't are not positions
+        # creates a list containing all the columns that are not positions
+        droppers = []
         for i in data.data_vars:
             if i not in ['xu', 'yu', 'zu']:
                 droppers.append(i)
 
         vectors = []
-        for i in range(len(data.id)):
-            if int(data.isel(id = i).type[0]) == mono_type: # type doesnt change during simulation
-                # since ids are ordered, the atom before and after the ellipsoid type are pseudo atoms and are used as vector extremities
-                atom_0 = data.drop_vars(droppers).isel(id = i-1)
-                atom_1 = data.drop_vars(droppers).isel(id = i+1)
+        total_ids = len(data.id)
+        for i in range(total_ids):
 
-                # we take advantage of the arithmetic properties of datasets
-                v = atom_1 - atom_0
-                norm = np.sqrt(v.xu**2 + v.yu**2 + v.zu**2)
-                v = v / norm
-                v['coord'] = xr.DataArray( np.transpose([v.xu, v.yu, v.zu]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
-                v['norm'] = norm
+            self._print( "\r\tComputing vectors... {:.0%}".format((i+1)/total_ids) ) ## change to percent
+            for pattern in self.vector_patterns:
 
-                alpha = np.arccos(v.xu)
-                beta = np.arccos(v.yu)
-                gamma = np.arccos(v.zu)
-                v['angle'] = xr.DataArray( np.transpose([alpha, beta, gamma]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
+                if i <= total_ids-len(pattern) and self.__is_fit_pattern( data.isel( id = range(i, i+len(pattern)) ).type, pattern ):
 
-                x_cm = data.isel(id = i).xu
-                y_cm = data.isel(id = i).yu
-                z_cm = data.isel(id = i).zu
-                v['cm'] = xr.DataArray( np.transpose([x_cm, y_cm, z_cm]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
+                    atom0 = data.drop_vars(droppers).isel(id = i)
+                    atom1 = data.drop_vars(droppers).isel(id = i+len(pattern)-1)
 
-                v = v.drop_vars(['xu', 'yu', 'zu'])
-                v.update( {'id': ( 'id', [i] )} )
+                    v = atom1 - atom0
+                    norm = np.sqrt(v.xu**2 + v.yu**2 + v.zu**2)
+                    v /= norm
+                    v['coord'] = xr.DataArray( np.transpose([v.xu, v.yu, v.zu]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
+                    v['norm'] = norm
 
-                vectors.append(v)
+                    alpha = np.arccos(v.xu)
+                    beta = np.arccos(v.yu)
+                    gamma = np.arccos(v.zu)
+                    v['angle'] = xr.DataArray( np.transpose([alpha, beta, gamma]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
 
+                    mid = (atom1 + atom0) / 2 ## should take into account all atoms in pattern and their mass
+                    x_cm = mid.xu
+                    y_cm = mid.yu
+                    z_cm = mid.zu
+                    v['cm'] = xr.DataArray( np.transpose([x_cm, y_cm, z_cm]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
+
+                    v = v.drop_vars(['xu', 'yu', 'zu'])
+                    v.update( {'id': ( 'id', [data.id[ i+int(len(pattern)/2) ]] )} )
+                    vectors.append(v)
+        self._print("\n")
         return xr.concat(vectors, dim = 'id')
 
-    def save_trajectory(self, path = 'save/'):
-        """Saves the trajectory class in a nc (netCDF) file. Much faster than read_trajectory.
+    def __is_fit_pattern(self, types, pattern) -> bool:
+        """Checks if a sequence matches the pattern. If the particle sequence has exactly the same type sequence as the pattern, True will be returned, False otherwise.
 
         Args:
-            - path (str, optional): Directory where the trajectory will be saved. Defaults to 'save/'.
+            types (xr.dataset): Dataset containing only the types of the selected particles.
+            ## may be dataArray
+            pattern (list of int): Type pattern defined as a vector.
 
-        TODO:
-            - Check integration with traj_options
-            - Allow custom naming of files
-            - Estimate size of files?
-            - The try: except: to see if the datasets exist are a little rough. See if there's a better way to do that.
-            - Integrate for the cluster class
-            - Integrate a way to save options as well
+        Returns:
+            bool: True if particle sequence fits pattern, False otherwise.
         """
-        try:
-            print('saving atoms...')
-            io.save_xarray(self.atoms, path, 'atoms_io')
-        except:
-            print('No trajectory for atoms; not saving dataset...')
+        flag = True
+        for i in range(len(pattern)):
+            self.__check_type_consistency(types.isel(id = i))
+            if types.isel(id = i, ts = 0) != pattern[i]:
+                flag = False
+        return flag
 
-        try:
-            print('saving vectors...')
-            io.save_xarray(self.vectors, path, 'vectors_io')
-        except:
-            print('No trajectory for vectors; not saving dataset...')
+    def __check_type_consistency(self, types):
+        type_0 = types.isel(ts = 0).values
+        for i in types.ts:
+            if type_0 != types.sel(ts = i).values:
+                raise IndexError("type is not consistent across simulation for id {id}. ts 0: {type0}, ts {ts1}: {type1}.".format(id = types.id,
+                                                                                                                                  type0 = type_0,
+                                                                                                                                  ts1 = i,
+                                                                                                                                  type1 = types.sel(ts = i).values,
+                                                                                                                                  )
+                                 )
 
-    def restore_trajectory(self, include = 'all'):
-        """Restores a saved trajectory from netCDF files to regenerate the trajectory class.
+    def __restore_trajectory(self) -> None:
+        """Restores the trajectory object from a previously saved trajectory object (with save_trajectory method).
+
+        TODO: a way to make sure dataset integrity is good and a way to make sure all of the class is properly restored.
+        """
+        ## Could do dataset checkup to verify integrity
+        files_imported = {'atoms':None, 'vectors':None, 'options':None}
+
+        for i in self.file_list:
+            if '.tnc' in i or '.tdc' in i:
+                if '.atoms.' in i:
+                    if not files_imported['atoms']:
+                        self._atoms = iol.read_dataset(i)
+                        files_imported['atoms'] = i
+                    else:
+                        raise EnvironmentError("Already imported the atoms dataset with " + files_imported['atoms'] + ", current file : " + i)
+
+                elif '.vectors.' in i:
+                    if not files_imported['vectors']:
+                        self._vectors = iol.read_dataset(i)
+                        files_imported['vectors'] = i
+                    else:
+                        raise EnvironmentError("Already imported the vectors dataset with " + files_imported['vectors'] + ", current file : " + i)
+
+                elif '.options.' in i:
+                    if not files_imported['options']:
+                        options = iol.read_dict(i)
+                        self.exclude = options["exclude"]
+                        self.vector_patterns = options["vector_patterns"]
+                        self.restore = True
+
+                        files_imported['options'] = i
+                    else:
+                        raise EnvironmentError("Already imported the options dict with " + files_imported['options'] + ", current file : " + i)
+
+                else:
+                    raise EnvironmentError("Restore not implemented for this file : " + i)
+
+    def _print(self, text): ## __print()?
+        """A method to print if updates is enabled (True) and not print if not enabled (False). Will be used a lot by child classes too.
 
         Args:
-            - include (str, optional): Which saved datasets to restore. Defaults to 'all'.
-
-        TODO:
-            - Damn this part is rough a bit.
-            - Allow custom naming. Maybe recognition of files based on a pattern not defined by user, eg. atoms_io.nc -> name.aio.nc
-            - Remove if include ==.... section, it's clunky and pattern recognition would be more versatile.
-            - Integrate option restoration.
+            text (str): Text to print.
         """
-        path = self.options.path
-        DO_ATOMS = False
-        DO_VECTORS = False
-        DO_OPTIONS = False
+        if self.updates:
+            print(text, end = "\r")
 
-        if include == 'all':
-            DO_ATOMS = True
-            DO_VECTORS = True
-            DO_OPTIONS = True
-        elif include == 'atoms':
-            DO_ATOMS = True
-        elif include == 'vectors':
-            DO_VECTORS = True
-        elif include == 'options':
-            DO_OPTIONS = True
-        else:
-            print('argument for include :', include, 'is not recognized!')
-
-        if DO_ATOMS:
-            self.atoms = io.read_xarray(path, name = 'atoms_io.nc')
-        if DO_VECTORS:
-            self.vectors = io.read_xarray(path, name = 'vectors_io.nc')
-
-class trajectory_options():
-    """Generates options for the trajectory. See Args for description of the options.
-
-    Args:
-        - path (str, optional): Directory of the trajectory files to read, be it LAMMPS dumps or netCDF previously saved. Defaults to "./", the current directory.
-        - file_pattern (str, optional): Pattern to match for finding the trajectory files. As of current version, it only works for restore=False. Defaults to "ellipsoid.*".
-        - exclude_types ([int], optional): Types that match the ones in this list will not be imported in the trajectory datasets. As of current version, it only works for restore=False. Defaults to None.
-        - monomer_types ([int], optional): Types that correspond to the ellipsoid of the monomer. Vectors extremities will be chosen as the particles one before and one after this type in a id ordered dataset. Defaults to None.
-        - restore (bool, optional): If True, the trajectory class will be generated from restoring the datasets from netCDF files. Defaults to False.
-
-    Attributes:
-        - Arguments
-        - file_list ([str]): List of the files that match pattern in path. Corresponds to the files that will be read for creating the trajectory class.
-
-    TODO:
-        - monomer_types is rough and need work for a more general approach
-    """
-    def __init__( self, path = "./", file_pattern = "ellipsoid.*", exclude_types = None, monomer_types = None, restore = False):
-        """Creates the class. Initializes the arguments attributes and creates file_list.
+    def save_trajectory(self, name, path = "save/") -> None:
+        """Saves trajectory object in a netcdf file format. Will create 3 files: _atoms trajectory dataset, _vectors trajectory dataset and _t-options dictionary of the object options.
 
         Args:
-            - path (str, optional): Directory of the trajectory files to read, be it LAMMPS dumps or netCDF previously saved. Needs to end with "/". Defaults to "./", the current directory.
-            - file_pattern (str, optional): Pattern to match for finding the trajectory files. Works with the Unix style pathname pattern expansion. As of current version, it only works for restore=False. Defaults to "ellipsoid.*".
-            - exclude_types ([int], optional): Types that match the ones in this list will not be imported in the trajectory datasets. As of current version, it only works for restore=False. Defaults to None.
-            - monomer_types ([int], optional): Types that correspond to the ellipsoid of the monomer. Vectors extremities will be chosen as the particles one before and one after this type in a id ordered dataset. Defaults to None.
-            - restore (bool, optional): If True, the trajectory class will be generated from restoring the datasets from netCDF files. Defaults to False.
-
+            name (str): Name used to identify the saved files. It needs to be str convertible.
+            path (str, optional): Path where the saved files will be written. Defaults to "save/".
         """
-        self.path = path
-        self.exclude_types = exclude_types
-        self.monomer_types = monomer_types
-        self.restore = restore
-        if not self.restore:
-            self.create_file_list(path, file_pattern)
+        options = {"exclude":self.exclude,
+                   "vector_patterns":self.vector_patterns,
+                   "file_list":self.file_list}
+        if iol.is_valid_name(name):
+            iol.save_xarray(self._atoms, path, name+".atoms.tnc")
+            iol.save_xarray(self._vectors, path, name+".vectors.tnc")
+            iol.save_dict(options, path, name+".options.tdc")
 
-    def create_file_list(self, path, file_pattern):
-        """Creates the file list from the files matching file_pattern in path
+    def get_atoms_ds(self) -> xr.Dataset:
+        """Getter for the _atoms dataset.
 
-        Args:
-            - path (str): Directory of the trajectory files to read. Needs to end with "/"
-            - file_pattern (str): Pattern to match for finding the trajectory files. Works with the Unix style pathname pattern expansion.
-
-        Raises:
-            - EnvironmentError: Script doesn't continue if no file is found.
-
-        TODO:
-            - EnvironmentError is a placeholder. Check if a more appropriate exists/can be created.
+        Returns:
+            xr.Dataset: Trajectory of all the atoms.
         """
-        self.file_list = glob(path + file_pattern)
-        print("Found", len(self.file_list), "matching", file_pattern, "in", path, "...")
-        if len(self.file_list) == 0:
-            raise EnvironmentError
+        return self._atoms
+
+    def get_vectors_ds(self) -> xr.Dataset:
+        """Getter for the _vectors dataset.
+
+        Returns:
+            xr.Dataset: Trajectory of all the vectors.
+        """
+        return self._vectors
