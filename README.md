@@ -86,7 +86,7 @@ Here is a transcript of the arguments available when generating the cluster obje
 
 ## References
 1. Regarding the systems studied here :
-  LCP article
+  Cuierrier, É., Ebrahimi, S., Couture, O., Soldera, A. (2021). Simulation of main chain liquid crystalline polymers using a Gay-Berne/Lennard-Jones hybrid model. Computational Materials Science. 186(110041). doi: [10.1016/j.commatsci.2020.110041](https://doi.org/10.1016/j.commatsci.2020.110041)
 2. Regarding global order parameter :
   Olivier, Y., Muccioli, L., & Zannoni, C. (2014). Quinquephenyl: The Simplest Rigid-Rod-Like Nematic Liquid Crystal, or is it? An Atomistic Simulation. Chemphyschem, 15(7), 1345-1355. doi: [10.1002/cphc.201301126](10.1002/cphc.201301126)
 3. Regarding local order parameter :
