@@ -317,6 +317,25 @@ class cluster( features ):
 
         return data
 
+    def find_best_cluster(self, data):
+        droppers = []
+        for i in data.data_vars:
+            if i not in ['dopcev', 'silhouette']:
+                droppers.append(i)
+        data = data.drop_vars(droppers)
+
+        best_array = []
+        for ts in data.ts:
+            best_val = data.sel(ts=ts, n_clusters=1).dopcev.values
+            best_clust = 1
+            for i in data.n_clusters.values[1:]:
+                current = ( data.sel(ts=ts, n_clusters=i).dopcev + data.sel(ts=ts, n_clusters=i).silhouette ) / 2
+                if current > best_val:
+                    best_val = current
+                    best_clust = i
+            best_array.append(best_clust)
+        return best_array
+
     def export_to_ovito(self, data, name, path) -> None:
         """Allows exporting a clustered clustraj dataset to LAMMPS dump format. A trajectory dump file will be created for each timestep and clustering parameter (n_clusters).
 
@@ -354,6 +373,7 @@ class cluster( features ):
             f.write('timestep, n_clusters')
             for i in data.n_clusters.values:
                 f.write(', ' + str(i))
+            f.write(', best_cluster')
             f.write('\n')
 
             for ts in data.ts.values:
@@ -363,6 +383,7 @@ class cluster( features ):
                 f.write(', silhouette')
                 for i in data.n_clusters:
                     f.write(', ' + str(data.silhouette.sel(ts = ts, n_clusters = i).values) )
+                f.write(', ' + str(self.find_best_cluster(data)[0]))
                 f.write('\n')
 
                 # DOPCEV

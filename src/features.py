@@ -3,6 +3,7 @@ import xarray as xr
 from pandas.plotting import scatter_matrix
 from scipy.spatial.distance import pdist, squareform
 import matplotlib.pyplot as plt
+import fnmatch
 
 from voxels import local
 import compute_structure as cs
@@ -259,7 +260,60 @@ class features( local ):
         else:
             raise ValueError("havent written this part properly yet")
 
-    def combine_features(self, features, method = "sum") -> xr.Dataset:
+    def set_weights(self, features, method):
+        """_summary_
+
+        Args:
+            features (_type_): _description_
+            method (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        weights = {}
+        if not method:
+            for i in features:
+                weights[i] = 1
+        elif method == 'auto':
+            bounds = self._atoms.bounds.mean(axis = self._atoms.bounds.get_axis_num('ts'))
+            bounds = bounds / max(bounds)
+
+            for i in features:
+                dir = i.split('_')[-1]
+                if dir in self.comps:
+                    weights[i] = float(bounds.sel(comp=dir).values)
+        elif isinstance(method, dict):
+            features_name = [i for i in features]
+            for i in method:
+                if '*' in i:
+                    for j in fnmatch.filter(features_name, i):
+                        weights[j] = method[i]
+        return weights
+
+    def combine_weights(self, w1, w2, method='product'):
+        """_summary_
+
+        Args:
+            w1 (_type_): _description_
+            w2 (_type_): _description_
+            method (str, optional): _description_. Defaults to 'product'.
+
+        Returns:
+            _type_: _description_
+        """
+        weights = {}
+        if method == 'sum':
+            for i in w1:
+                weights[i] = w1[i] + w2[i]
+        elif method == 'product':
+            for i in w1:
+                weights[i] = w1[i] * w2[i]
+        elif method == 'euclidian':
+            for i in w1:
+                weights[i] = np.sqrt(w1[i]**2 + w2[i]**2)
+        return weights
+
+    def combine_features(self, features, weights, method = "sum") -> xr.Dataset:
         """Combines the different kernel matrices of all features into 1 kernel matrix. Different combination methods are implemented
 
         Args:
@@ -268,14 +322,16 @@ class features( local ):
         Returns:
             xr.Dataset: Combined features. Should have no coordinates except timestep, id and id_n.
         ## might be dataArray
+        TODO: check if weights name match features
         """
+
         if method == "sum":
             for cnt, name in enumerate(features):
                 if cnt == 0:
-                    data = features[name]
+                    data = weights[name] * features[name]
                 else:
-                    data += features[name]
-        elif method == "product":
+                    data += weights[name] * features[name]
+        elif method == "product": # not sure how to implement weights here.
             for cnt, name in enumerate(features):
                 if cnt == 0:
                     data = features[name]
@@ -284,9 +340,9 @@ class features( local ):
         elif method == "euclidean":
             for cnt, name in enumerate(features):
                 if cnt == 0:
-                    data = features[name] ** 2
+                    data = weights[name] * features[name] ** 2
                 else:
-                    data += features[name] ** 2
+                    data += weights[name] * features[name] ** 2
             data = np.sqrt(data)
         return data
 
