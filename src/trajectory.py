@@ -8,7 +8,7 @@ import compute_structure as cs
 
 class trajectory( object ): ## need object here?
 
-    def __init__(self, 
+    def __init__(self,
                  path = "./", pattern = "ellipsoid.*", exclude = None, vector_patterns = [[2, 3, 2]], restore = False, updates = True
                  ) -> None:
         """LAMMPS trajectory converted to an xarray dataset. Additionally ellipsoidal particles are defined as vectors and stored in another dataset for further computation.
@@ -166,6 +166,8 @@ class trajectory( object ): ## need object here?
         Returns:
             xr.Dataset: Trajectory of vectors. Depends of timesteps, xyz coordinate and particle ids. It's properties are center of mass (cm), norm of vector (norm), angle with respect to xyz coordinates (euler angles?) (angle) and vector coordinates (coord). Center of mass is computed with the 2 extremum particles. Id is that of the center particle.
         """
+        SYM_ANGLE = False ## testing that feature. will implement by default if it works well
+
         data = self._atoms
         coords = ['x', 'y', 'z']
         # creates a list containing all the columns that are not positions
@@ -189,6 +191,16 @@ class trajectory( object ): ## need object here?
                     v = atom1 - atom0
                     norm = np.sqrt(v.xu**2 + v.yu**2 + v.zu**2)
                     v /= norm
+
+                    if SYM_ANGLE:
+                        arr=[]
+                        for ts in v.ts:
+                            if v.sel(ts=ts) < 0:
+                                arr.append(v.sel(ts=ts)*-1)
+                            else:
+                                arr.append(v.sel(ts=ts))
+                        v = xr.concat(arr, dim='ts')
+
                     v['coord'] = xr.DataArray( np.transpose([v.xu, v.yu, v.zu]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
                     v['norm'] = norm
 

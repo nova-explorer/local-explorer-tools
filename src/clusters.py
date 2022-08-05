@@ -3,19 +3,14 @@ import sklearn.cluster as sk_c
 import sklearn_extra.cluster as ske_c
 import sklearn.metrics as sk_m
 import xarray as xr
+import numpy as np
 
 from features import features
 import io_local as iol
 import compute_structure as cs
 
 """
-kmeans : https://stackoverflow.com/questions/5529625/is-it-possible-to-specify-your-own-distance-function-using-scikit-learn-k-means
-
-affinity propagation : https://scikit-learn.org/stable/modules/generated/sklearn.cluster.AffinityPropagation.html#sklearn.cluster.AffinityPropagation
-
 kmedoids : https://scikit-learn-extra.readthedocs.io/en/stable/generated/sklearn_extra.cluster.KMedoids.html#sklearn_extra.cluster.KMedoids
-
-common nearest neighbors clustering : https://scikit-learn-extra.readthedocs.io/en/stable/generated/sklearn_extra.cluster.CommonNNClustering.html#sklearn_extra.cluster.CommonNNClustering
 
 principal component analysis : https://scikit-learn.org/stable/modules/decomposition.html#pca
 """
@@ -223,7 +218,81 @@ class cluster( features ):
         self._print('\t\tDOPCEV: {:.3f}\n'.format(1-sum(dopcev)))
         return 1 - sum(dopcev) #sum ou moyenne
 
-    def clusterize(self, features, algorithm = "KMedoids", n_clusters = None,  **kwargs) -> xr.Dataset:
+    def __compute_dopcev_5(self, data) -> float:
+        """Computes the Domain Order Parameter Coefficient for External Validation (DOPCEV). DOPCEV is used for representing how well a cluster represents domain using the local and global onsager order parameter.
+
+        Formula:
+            TODO
+
+        Args:
+            data (xr.Dataset): Clustered clustraj dataset for a single timestep and clustering parameter (n_clusters). The vectors and voxels dataset will also be needed.
+
+        Returns:
+            float: DOPCEV value for the current clustering.
+        """
+        data = data.where(data.labels != 0, drop=True)
+        dopcev = []
+        for i in range(data.n_clusters.values+1)[1:]:
+            self._print('\t\tDOPCEV for cluster {}\n'.format(i))
+            current_cluster = data.where(data.labels == i, drop = True).id.values ##maybe not just ids?
+            current_cluster_indices = [ i for i, id in enumerate(self.ids) if id in current_cluster ]
+
+            particles_fraction = len(current_cluster) / len(self.ids)
+            if particles_fraction == 0:
+                dopcev.append(0)
+                self._print('\t\t\t0 atoms in cluster, DOPCEV value set to 0\n')
+            else:
+                op_cluster = float( cs.global_onsager(self._vectors.sel(ts = data.ts).isel(id = current_cluster_indices)) )
+                op_local = float( self._voxels.sel(ts = data.ts).isel(id = current_cluster_indices).onsager_1.values.mean() )## could take onsager 2
+
+                ratio = abs(op_cluster - op_local) / op_local
+                dopcev.append( particles_fraction * ratio )
+                self._print( '\t\t\tCluster OP: {:.3f}, local OP: {:.3f}, fraction: {:.3f}, DOPCEV: {:.3f}\n'.format(op_cluster,
+                                                                                                                     op_local,
+                                                                                                                     particles_fraction,
+                                                                                                                     1-ratio)
+                            )
+        self._print('\t\tDOPCEV: {:.3f}\n'.format(1-sum(dopcev)))
+        return 1 - sum(dopcev)
+
+    def __compute_dopcev_6(self, data) -> float:
+        """Computes the Domain Order Parameter Coefficient for External Validation (DOPCEV). DOPCEV is used for representing how well a cluster represents domain using the local and global onsager order parameter.
+
+        Formula:
+            TODO
+
+        Args:
+            data (xr.Dataset): Clustered clustraj dataset for a single timestep and clustering parameter (n_clusters). The vectors and voxels dataset will also be needed.
+
+        Returns:
+            float: DOPCEV value for the current clustering.
+        """
+        data = data.where(data.labels != 0, drop=True)
+        dopcev = []
+        for i in range(data.n_clusters.values+1)[1:]:
+            self._print('\t\tDOPCEV for cluster {}\n'.format(i))
+            current_cluster = data.where(data.labels == i, drop = True).id.values ##maybe not just ids?
+            current_cluster_indices = [ i for i, id in enumerate(self.ids) if id in current_cluster ]
+
+            particles_fraction = len(current_cluster) / len(self.ids)
+            if particles_fraction == 0:
+                dopcev.append(0)
+                self._print('\t\t\t0 atoms in cluster, DOPCEV value set to 0\n')
+            else:
+                op_cluster = float( cs.global_onsager(self._vectors.sel(ts = data.ts).isel(id = current_cluster_indices)) )
+                op_local = float( self._voxels.sel(ts = data.ts).isel(id = current_cluster_indices).onsager_1.values.mean() )## could take onsager 2
+
+                ratio = abs(op_cluster - op_local) / op_local
+                dopcev.append( particles_fraction * ratio**2 )
+                self._print( '\t\t\tCluster OP: {:.3f}, local OP: {:.3f}, fraction: {:.3f}, DOPCEV: {:.3f}\n'.format(op_cluster,
+                                                                                                                     op_local,
+                                                                                                                     particles_fraction,
+                                                                                                                     1-ratio)
+                            )
+        self._print('\t\tDOPCEV: {:.3f}\n'.format(1-sum(dopcev)))
+        return 1 - sum(dopcev)
+
+    def clusterize(self, features, algorithm = "KMedoids", n_clusters = [1],  **kwargs) -> xr.Dataset:
         """Performs the clustering of features.
 
         Args:
@@ -248,11 +317,38 @@ class cluster( features ):
 
             clust_alg = [ ske_c.KMedoids(metric = 'precomputed', n_clusters = i, **kwargs) for i in n_clusters ]
 
-        elif algorithm == "AffinityPropagation":
-            clust_alg = sk_c.AffinityPropagation(metric = 'precomputed', **kwargs)
+        elif algorithm == "Spectral":
+            if isinstance(n_clusters, int):
+                n_clusters = [n_clusters]
+            elif isinstance(n_clusters, list):
+                pass
+            else:
+                raise ValueError("n_clusters bad format") ## do a proper error
 
-        elif algorithm == "commonNN":
-            clust_alg = ske_c.CommonNNClustering(metric = 'precomputed', **kwargs)
+            clust_alg = [ sk_c.SpectralClustering(affinity = 'precomputed', n_clusters = i, **kwargs) for i in n_clusters ]
+
+        elif algorithm == "agglomerative":
+            if isinstance(n_clusters, int):
+                n_clusters = [n_clusters]
+            elif isinstance(n_clusters, list):
+                pass
+            else:
+                raise ValueError("n_clusters bad format") ## do a proper error
+
+            clust_alg = [ sk_c.AgglomerativeClustering(affinity = 'precomputed', n_clusters = i, **kwargs) for i in n_clusters ]
+
+        elif algorithm == "birch":
+            if isinstance(n_clusters, int):
+                n_clusters = [n_clusters]
+            elif isinstance(n_clusters, list):
+                pass
+            else:
+                raise ValueError("n_clusters bad format") ## do a proper error
+
+            clust_alg = [ sk_c.Birch(n_clusters = i, **kwargs) for i in n_clusters ]
+
+        else:
+            raise ValueError("No selected clustering")## do a proper error
 
         labels_array = []
         total_ts = len(self.timesteps)
@@ -263,7 +359,7 @@ class cluster( features ):
                 self._print( '\r\tClusterizing timestep {}/{} with parameter {}/{}'.format(cnt_ts+1, total_ts,
                                                                                            i+1, total_param)
                             )
-                cluster.fit(features.sel(ts = ts))
+                cluster.fit(features.sel(ts = ts).values.copy(order='C'))
                 labels.append(cluster.labels_ + 1)
             labels_array.append(labels)
         self._print("\n")
@@ -295,6 +391,10 @@ class cluster( features ):
             dopcev_func = self.__compute_dopcev_3
         elif dopcev_type == 4:
             dopcev_func = self.__compute_dopcev_4
+        elif dopcev_type == 5:
+            dopcev_func = self.__compute_dopcev_5
+        elif dopcev_type == 6:
+            dopcev_func = self.__compute_dopcev_6
         else:
             raise ValueError("Specified DOPCEV type not implemented:" + str(dopcev_type))
 
@@ -326,8 +426,8 @@ class cluster( features ):
 
         best_array = []
         for ts in data.ts:
-            best_val = data.sel(ts=ts, n_clusters=1).dopcev.values
-            best_clust = 1
+            best_val = data.sel(ts=ts).isel(n_clusters=0).dopcev.values
+            best_clust = data.n_clusters.values[0]
             for i in data.n_clusters.values[1:]:
                 current = ( data.sel(ts=ts, n_clusters=i).dopcev + data.sel(ts=ts, n_clusters=i).silhouette ) / 2
                 if current > best_val:
@@ -335,6 +435,44 @@ class cluster( features ):
                     best_clust = i
             best_array.append(best_clust)
         return best_array
+
+    def find_better_cluster(self, data):
+        droppers = []
+        for i in data.data_vars:
+            if i not in ['dopcev', 'silhouette']:
+                droppers.append(i)
+        data = data.drop_vars(droppers)
+
+        best_array = []
+        for ts in data.ts:
+            dopcev = data.sel(ts=ts).dopcev.values
+            silhouette = data.sel(ts=ts).silhouette.values
+            silhouette[0] = max(silhouette[1:])
+
+            coefficients = dopcev/max(dopcev) + silhouette/max(silhouette)
+            best_val = 0
+            best_clust = 0
+            for i in range(len(data.n_clusters.values)):
+                if coefficients[i] > best_val:
+                    best_val = coefficients[i]
+                    best_clust = data.n_clusters.values[i]
+            best_array.append(best_clust)
+        return best_array
+
+    def add_labels(self, labels, ids, param=[0]):
+        """Redo to account timesteps or remove after
+
+        Args:
+            labels (_type_): _description_
+            ids (_type_): _description_
+            param (list, optional): _description_. Defaults to [0].
+
+        Returns:
+            _type_: _description_
+        """
+        data = self._clustraj.copy()
+        data['labels'] = xr.DataArray([[labels]], coords=[self.timesteps, param, ids], dims=['ts', 'n_clusters', 'id'])
+        return data.fillna({'labels':0})
 
     def export_to_ovito(self, data, name, path) -> None:
         """Allows exporting a clustered clustraj dataset to LAMMPS dump format. A trajectory dump file will be created for each timestep and clustering parameter (n_clusters).
@@ -390,6 +528,7 @@ class cluster( features ):
                 f.write(', , DOPCEV')
                 for i in data.n_clusters:
                     f.write(', ' + str(data.dopcev.sel(ts = ts, n_clusters = i).values) )
+                f.write(', ' + str(self.find_better_cluster(data)[0]))
                 f.write('\n')
 
     def get_clustraj_ds(self) -> xr.Dataset:

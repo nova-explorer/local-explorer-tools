@@ -50,6 +50,26 @@ def voxel_onsager(ds) -> float:
         op += ( 3 * np.dot(data[0], data[i])**2 - 1 ) / 2 / nb_neigh
     return op
 
+def poisson_coefficient(data):
+    # x
+    # y
+    # z
+
+    # ex = x-x0 / x0
+    # ey = y-y0 / y0
+    # ez = z-z0 / z0
+
+    lenghts = []
+    deformations = []
+    for i in data.comps:
+        current = data.get_distances_da().sel(comp=i)
+        current = current.max(axis=current.get_axis_num('id'))
+        current = current.max(axis=current.get_axis_num('id_n')).values
+        lenghts.append(current)
+
+        deformations.append( (current - current[0]) / current[0] )
+    return xr.DataArray(deformations, coords=[data.comps, data.timesteps], dims=['comp', 'ts'])
+
 # # not the most useful local order parameters
 def voxel_common_neigh():
     return 0

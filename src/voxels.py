@@ -8,7 +8,7 @@ from trajectory import trajectory
 
 class local( trajectory ):
 
-    def __init__(self, 
+    def __init__(self,
                  path = "./", pattern = "ellipsoid.*", exclude = None, vector_patterns = [[2, 3, 2]], restore_trajectory = False, updates = True,
                  neighbors = 10, restore_locals = False
                  ) -> None:
@@ -92,9 +92,11 @@ class local( trajectory ):
         Returns:
             np.ndarray: Distance matrix with PBC applied.
         """
-        distances = np.where( distances >= cutoff, 
-                         distances - cutoff, 
-                         distances)
+        while (distances >= cutoff).any():
+            distances = np.where( distances >= cutoff,
+                                distances - cutoff,
+                                distances
+                                )
         return distances
 
     def __compute_voxels_trajectory(self, properties = ['cm', 'angle', 'coord']) -> xr.Dataset:
@@ -303,7 +305,7 @@ class local( trajectory ):
             name (str): Name used to identify the saved files. It needs to be str convertible.
             path (str, optional): Path where the saved files will be written. Defaults to "save/".
         """
-        options = {"neighbors":self.neighbors, 
+        options = {"neighbors":self.neighbors,
                    }
         if iol.is_valid_name(name):
             iol.save_xarray(self._distance_matrix, path, name+".dist.lnc")

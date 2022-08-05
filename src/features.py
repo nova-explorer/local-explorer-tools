@@ -4,6 +4,8 @@ from pandas.plotting import scatter_matrix
 from scipy.spatial.distance import pdist, squareform
 import matplotlib.pyplot as plt
 import fnmatch
+from skbio.stats.ordination import pcoa
+from sklearn.decomposition import PCA
 
 from voxels import local
 import compute_structure as cs
@@ -39,7 +41,7 @@ class features( local ):
         super().__init__(path, pattern, exclude, vector_patterns, restore_trajectory, updates, neighbors, restore_locals)
 
         self._features = self.__generate_raw_features(vector_descriptors, voxel_descriptors, distance_descriptor, director)
-        self.__apply_symmetries()
+        self.__apply_symmetries(pattern)
         self.__compute_distances()
 
         self.__normalize(normalization)
@@ -94,12 +96,12 @@ class features( local ):
                 director.append(str(i.comp.values))
         return director
 
-    def __apply_symmetries(self) -> None:
+    def __apply_symmetries(self, pattern) -> None:
         """Applies symmetries to the features. These symmetries are extremely system dependant. Check the methods with symmetry in the name for details.
         """
         for name in list(self._features.keys()):
             if "angle" in name:
-                self._features[name] = self.__angle_symmetry(self._features[name]) # check if ok with different dimensionality
+                self._features[name] = self.__angle_symmetry(self._features[name], pattern) # check if ok with different dimensionality
             if "distance" in name:
                 self.__check_distance_symmetry(self._features[name])
 
@@ -108,7 +110,7 @@ class features( local ):
         # check if sparse and no distance is larger than bounds
         pass
 
-    def __angle_symmetry(self, data) -> xr.DataArray:
+    def __angle_symmetry(self, data, pattern) -> xr.DataArray:
         """Applies the symmetry for a reversible particle's vector angle. The angle needs to not be on a degree (or radian) scale. Since it's reversible we then don't consider difference between negative and positive values.
 
         Args:
@@ -117,7 +119,17 @@ class features( local ):
         Returns:
             xr.DataArray: Symmetric angle data. Applying the symmetry doesn't modify the coords of the dataArray.
         """
-        return abs(np.cos(data)) # could be squared instead of abs
+        if 'old-angle' in pattern: ## temporary, should remove when testings are done
+            # print("\n\t\t\t\t"+pattern+" old")
+            data = abs(np.cos(data))
+        elif 'new-angle' in pattern:
+            # print("\n\t\t\t\t"+pattern+" new")
+            data = np.cos(data)
+        else:
+            raise ValueError("angle symmetry issue")
+        return data
+        # return abs(np.cos(data)) # could be squared instead of abs
+        # return np.cos(data)
 
     def __compute_distances(self, **pdist_kwargs) -> None:
         """Computes pairwise distances for each feature on each timestep separately. Overwrites _features.
@@ -172,6 +184,12 @@ class features( local ):
                     else:
                         data.append( norm_func( self._features[name].sel(ts = ts) ) )
                 self._features[name] = xr.DataArray(data, coords = [self.timesteps, self.ids, self.ids], dims = ['ts', 'id', 'id_n'])
+
+    def __rescale_positive(self, data):
+        if (data < 0).any():
+            min_ = abs( np.min(data) )
+            data += min_
+        return data
 
     def __normalize_max(self, data) -> xr.DataArray:
         """Normalization technique. Divide the whole feature by it's maximum value.
@@ -346,28 +364,57 @@ class features( local ):
             data = np.sqrt(data)
         return data
 
-    def analyze_features(self):
+    def pairwise_plot(self, data, ts=0):
+        plt.imshow(data.isel(ts=ts), interpolation='nearest')
+        plt.show()
+
+    def scatter_matrix(self, ts=0, id=0):
         """Still working on that
 
         Returns:
             _type_: _description_
         """
-        data = self._features.isel(ts = 0, id = 0).drop_vars(['ts', 'id'])
+        data = self._features.isel(ts = ts, id = id).drop_vars(['ts', 'id'])
 
         scatter_matrix(data.to_dataframe())
         plt.show()
-
-        # fig, ax = plt.subplots()
-        # scatter = ax.scatter( self.ids, self.ids, c = self._features.isel(ts = 0) )
-        # bar = fig.colorbar(scatter)
-        # plt.show()
-
-        # draw system xyz in 3d with angle as color -> the same as trajectory tho
-        # draw feature space but what is feature space?
-
         return data.to_dataframe()
 
+    def decomposition(self, features, method='pca', **kwargs):
+        """http://scikit-bio.org/docs/0.5.4/generated/generated/skbio.stats.ordination.pcoa.html
+
+        https://scikit-learn.org/stable/modules/generated/sklearn.decomposition.PCA.html#sklearn.decomposition.PCA
+
+        Args:
+            features (_type_): _description_
+            method (str, optional): _description_. Defaults to 'pca'.
+
+        Raises:
+            ValueError: _description_
+
+        Returns:
+            _type_: _description_
+        """
+        data = []
+        if method == 'pca':
+            for ts in self.timesteps:
+                data.append( PCA(**kwargs).fit(features.sel(ts=ts)).transform(features.sel(ts=ts)) )
+        elif method == 'pcoa':
+            for ts in self.timesteps:
+                data.append( pcoa(features.sel(ts), **kwargs).samples )
+        else:
+            raise ValueError("smtn")
+
+        # return xr.DataArray(data)
+        return data
+
+        # pcoa_data = pcoa(final_features.isel(ts=0))
+        # plt.scatter(pcoa_data.samples['PC1'], pcoa_data.samples['PC2'])
+        # plt.show()
+        # return pcoa_data
+
     def filter_features(self, onsager_thresh = 0.3, rdf_dist_thresh = 2, rdf_value_tresh = 0.1):
+        ## take into account timesteps
         mean_rdf = self._rdf.mean(axis = self._rdf.get_axis_num('id'))
         peak_mean_rdf = mean_rdf.idxmax('distance')
         max_mean_rdf = mean_rdf.max('distance')
@@ -394,6 +441,12 @@ class features( local ):
             else:
                 filtered_ids.append(False)
         return filtered.where(filtered_ids).dropna('id_n')
+
+    def to_dissimilarities(self, ds) -> xr.Dataset:
+        return ds / ds.max(['id', 'id_n'])
+
+    def to_similarities(self, ds) -> xr.Dataset:
+        return 1 - self.to_dissimilarities(ds)
 
     def get_features_ds(self) -> xr.Dataset:
         """Getter for the _features dataset.

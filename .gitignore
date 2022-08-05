@@ -132,6 +132,9 @@ dmypy.json
 # local commit file
 .commit
 src/main_loop.py
+src/test.py
+src/op.py
 save/
 archive/
 test/
+
