@@ -5,8 +5,6 @@ import re
 import xarray as xr
 import ast
 
-# # TODO : with open is better than open since it closes automatically.
-
 def create_file_list(path, file_pattern) -> list:
     """Creates a list of files matching file_pattern.
 
@@ -66,13 +64,14 @@ def read_file(filename) -> list:
     Returns:
         list of str: Content of the file.
     """
-    if re.search('.gz', filename): # if the file is compressed with gz
-        f = gz.open(filename, 'rt')
+    if re.search('.gz', filename):
+        opener = gz.open
     else:
-        f = open(filename, 'rt')
-    file = f.readlines()
-    f.close()
-    return file
+        opener = open
+
+    with opener(filename, 'rt') as f:
+        lines = f.readlines()
+    return lines
 
 def read_dataset(filename) -> xr.Dataset:
     """Reads filename from netCDF format and turns it into a dataset.
@@ -106,8 +105,8 @@ def read_dict(filename) -> dict:
     Returns:
         dict: Dict contained in the file.
     """
-    f = open(filename, 'rt')
-    dict = f.read()
+    with open(filename, 'rt') as f:
+        dict = f.read()
     return ast.literal_eval(dict)
 
 def is_valid_name(name) -> bool:
@@ -155,10 +154,8 @@ def save_dict(dict, path, name) -> None:
         path += '/'
     make_dir(path)
 
-    name = path + name
-    f = open(name, "wt")
-    f.write(str(dict))
-    f.close()
+    with open(path + name, 'wt') as f:
+        f.write(str(dict))
 
 def frame_to_dump(data, name = "cluster", path = "save/clusters/") -> None:
     """Exports a frame from a clustered trajectory and saves it in a LAMMPS dump file format.
@@ -176,28 +173,25 @@ def frame_to_dump(data, name = "cluster", path = "save/clusters/") -> None:
 
     data_vars = [ i for i in list(data.keys()) if 'id' in data[i].coords and i != 'labels' ]
 
-    f = open(path+name, 'wt')
+    with open(path+name, 'wt') as f:
+        f.write( 'ITEM: TIMESTEP\n' )
+        f.write( str(data.ts.values) + '\n' )
 
-    f.write( 'ITEM: TIMESTEP\n' )
-    f.write( str(data.ts.values) + '\n' )
+        f.write( 'ITEM: N_CLUSTER\n' )
+        f.write( str(data.n_clusters.values) + '\n' )
 
-    f.write( 'ITEM: N_CLUSTER\n' )
-    f.write( str(data.n_clusters.values) + '\n' )
+        f.write( 'ITEM: NUMBER OF ATOMS\n' )
+        f.write( str(len(data.id)) + '\n' )
 
-    f.write( 'ITEM: NUMBER OF ATOMS\n' )
-    f.write( str(len(data.id)) + '\n' )
+        f.write( 'ITEM: BOX BOUNDS pp pp pp\n' )
+        for comp in data.comp:
+            f.write( '0 ' + str(data.bounds.sel(comp = comp).values) + '\n' )
 
-    f.write( 'ITEM: BOX BOUNDS pp pp pp\n' )
-    for comp in data.comp:
-        f.write( '0 ' + str(data.bounds.sel(comp = comp).values) + '\n' )
-
-    f.write( 'ITEM: ATOMS id type ' + ' '.join(map(str, data_vars)) + '\n')
-    for i in data.id.values:
-        line = str(i) + ' ' # id
-        line += str(data.labels.sel(id = i).values) + ' ' # type
-        for j in data_vars:
-            line += str(data[j].sel(id = i).values) + ' ' # atom properties
-        f.write(line + '\n')
-    f.write('\n')
-
-    f.close()
+        f.write( 'ITEM: ATOMS id type ' + ' '.join(map(str, data_vars)) + '\n')
+        for i in data.id.values:
+            line = str(i) + ' ' # id
+            line += str(data.labels.sel(id = i).values) + ' ' # type
+            for j in data_vars:
+                line += str(data[j].sel(id = i).values) + ' ' # atom properties
+            f.write(line + '\n')
+        f.write('\n')

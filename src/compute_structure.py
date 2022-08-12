@@ -51,14 +51,7 @@ def voxel_onsager(ds) -> float:
     return op
 
 def poisson_coefficient(data):
-    # x
-    # y
-    # z
-
-    # ex = x-x0 / x0
-    # ey = y-y0 / y0
-    # ez = z-z0 / z0
-
+    # Preliminary test didnt give me correct results but I think it is because dump frequency was too small.
     lenghts = []
     deformations = []
     for i in data.comps:
@@ -69,16 +62,3 @@ def poisson_coefficient(data):
 
         deformations.append( (current - current[0]) / current[0] )
     return xr.DataArray(deformations, coords=[data.comps, data.timesteps], dims=['comp', 'ts'])
-
-# # not the most useful local order parameters
-def voxel_common_neigh():
-    return 0
-
-def voxel_pred_neigh():
-    return 0
-
-def voxel_another_neigh():
-    return 0
-
-def voxel_neigh_dist():
-    return 0

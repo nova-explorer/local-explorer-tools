@@ -69,9 +69,14 @@ Here is a transcript of the arguments available when generating the cluster obje
  - For now iteration over clustering parameter (such as done for clustering coefficients) only works for n_clusters. This should be generalized.
 ### compute_structure.py
  - Check if voxel_onsager and global_onsager give same result for same set of particles.
+ - Test poisson coefficient function
 ### features.py
  - Features could be saved/restored but they are very quick to compute.
  - __check_distance_symmetry
+ - Test different normalizations and remove unusables
+ - Check proper angle symmetry
+ - Filter needs to account timestep
+ - Test PCA/PCoA
 ### io_local.py
  - with open() should be used instead of open().
 ### trajectory.py
@@ -79,7 +84,7 @@ Here is a transcript of the arguments available when generating the cluster obje
  - Name used for trajectory properties isn't consistent in code.
 ### voxels.py
  - __compute_distance_matrices isn't uniform with features.py
-
+ - Check proper distance PBC application
 
 ## Citation
   so far nothing, just cite this github page and/or contact me using the first article below.

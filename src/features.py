@@ -4,7 +4,7 @@ from pandas.plotting import scatter_matrix
 from scipy.spatial.distance import pdist, squareform
 import matplotlib.pyplot as plt
 import fnmatch
-from skbio.stats.ordination import pcoa
+from skbio.stats.ordination import pcoa ## NEED TO IMPLEMENT PROPERLY
 from sklearn.decomposition import PCA
 
 from voxels import local
@@ -41,7 +41,7 @@ class features( local ):
         super().__init__(path, pattern, exclude, vector_patterns, restore_trajectory, updates, neighbors, restore_locals)
 
         self._features = self.__generate_raw_features(vector_descriptors, voxel_descriptors, distance_descriptor, director)
-        self.__apply_symmetries(pattern)
+        self.__apply_symmetries()
         self.__compute_distances()
 
         self.__normalize(normalization)
@@ -96,12 +96,12 @@ class features( local ):
                 director.append(str(i.comp.values))
         return director
 
-    def __apply_symmetries(self, pattern) -> None:
+    def __apply_symmetries(self) -> None:
         """Applies symmetries to the features. These symmetries are extremely system dependant. Check the methods with symmetry in the name for details.
         """
         for name in list(self._features.keys()):
             if "angle" in name:
-                self._features[name] = self.__angle_symmetry(self._features[name], pattern) # check if ok with different dimensionality
+                self._features[name] = self.__angle_symmetry(self._features[name]) # check if ok with different dimensionality
             if "distance" in name:
                 self.__check_distance_symmetry(self._features[name])
 
@@ -110,7 +110,7 @@ class features( local ):
         # check if sparse and no distance is larger than bounds
         pass
 
-    def __angle_symmetry(self, data, pattern) -> xr.DataArray:
+    def __angle_symmetry(self, data) -> xr.DataArray:
         """Applies the symmetry for a reversible particle's vector angle. The angle needs to not be on a degree (or radian) scale. Since it's reversible we then don't consider difference between negative and positive values.
 
         Args:
@@ -119,17 +119,7 @@ class features( local ):
         Returns:
             xr.DataArray: Symmetric angle data. Applying the symmetry doesn't modify the coords of the dataArray.
         """
-        if 'old-angle' in pattern: ## temporary, should remove when testings are done
-            # print("\n\t\t\t\t"+pattern+" old")
-            data = abs(np.cos(data))
-        elif 'new-angle' in pattern:
-            # print("\n\t\t\t\t"+pattern+" new")
-            data = np.cos(data)
-        else:
-            raise ValueError("angle symmetry issue")
-        return data
-        # return abs(np.cos(data)) # could be squared instead of abs
-        # return np.cos(data)
+        return abs(np.cos(data)) # could be squared instead of abs
 
     def __compute_distances(self, **pdist_kwargs) -> None:
         """Computes pairwise distances for each feature on each timestep separately. Overwrites _features.
@@ -367,13 +357,9 @@ class features( local ):
     def pairwise_plot(self, data, ts=0):
         plt.imshow(data.isel(ts=ts), interpolation='nearest')
         plt.show()
+    ## difference between pairwise_plot and scatter_matrix?
 
     def scatter_matrix(self, ts=0, id=0):
-        """Still working on that
-
-        Returns:
-            _type_: _description_
-        """
         data = self._features.isel(ts = ts, id = id).drop_vars(['ts', 'id'])
 
         scatter_matrix(data.to_dataframe())
