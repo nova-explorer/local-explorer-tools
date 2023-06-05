@@ -92,12 +92,8 @@ class local( trajectory ):
         Returns:
             np.ndarray: Distance matrix with PBC applied.
         """
-        while (distances >= cutoff).any():
-            distances = np.where( distances >= cutoff,
-                                distances - cutoff,
-                                distances
-                                )
-        return distances
+
+        return abs(distances - cutoff * np.round( distances / cutoff ))
 
     def __compute_voxels_trajectory(self, properties = ['cm', 'angle', 'coord']) -> xr.Dataset:
         """Constructs the voxel dataset using the nearest neighbors according to the distance matrix. Also adds properties from the vectors dataset to the voxels.
@@ -120,8 +116,8 @@ class local( trajectory ):
             voxels_array.append(voxel)
 
         data = xr.Dataset({"voxel":
-            xr.DataArray(voxels_array, 
-                         coords = [self.timesteps, self.ids, range(self.neighbors)], 
+            xr.DataArray(voxels_array,
+                         coords = [self.timesteps, self.ids, range(self.neighbors)],
                          dims = ['ts', 'id', 'id_2']
                          )
             })
@@ -140,7 +136,7 @@ class local( trajectory ):
             data_traj = []
             for cnt_i, i in enumerate(self.timesteps):
 
-                self._print( "\r\tAdding property {}/{} on timestep {}/{}".format(cnt_p+1, total_props, 
+                self._print( "\r\tAdding property {}/{} on timestep {}/{}".format(cnt_p+1, total_props,
                                                                                 cnt_i+1, total_ts)
                                                                                 )
 

@@ -2,9 +2,9 @@ import numpy as np
 import xarray as xr
 from pandas.plotting import scatter_matrix
 from scipy.spatial.distance import pdist, squareform
+from scipy.sparse import issparse
 import matplotlib.pyplot as plt
 import fnmatch
-from skbio.stats.ordination import pcoa ## NEED TO IMPLEMENT PROPERLY
 from sklearn.decomposition import PCA
 
 from voxels import local
@@ -100,26 +100,27 @@ class features( local ):
         """Applies symmetries to the features. These symmetries are extremely system dependant. Check the methods with symmetry in the name for details.
         """
         for name in list(self._features.keys()):
-            if "angle" in name:
-                self._features[name] = self.__angle_symmetry(self._features[name]) # check if ok with different dimensionality
-            if "distance" in name:
-                self.__check_distance_symmetry(self._features[name])
+            # if "angle" in name:
+                # self._features[name] = self.__angle_symmetry(self._features[name]) # check if ok with different dimensionality
+            if "coord" in name:
+                self._features[name] = self.__coord_symmetry(self._features[name])
 
-    def __check_distance_symmetry(self, data):
-        ## TODO
-        # check if sparse and no distance is larger than bounds
-        pass
+    def __coord_symmetry(self, data) -> xr.DataArray:
+        return data.where(self._vectors.coord.sel(comp='x') > 0, data * -1)
 
-    def __angle_symmetry(self, data) -> xr.DataArray:
-        """Applies the symmetry for a reversible particle's vector angle. The angle needs to not be on a degree (or radian) scale. Since it's reversible we then don't consider difference between negative and positive values.
+    # def __angle_symmetry(self, data) -> xr.DataArray:
+    #     """Applies the symmetry for a reversible particle's vector angle. The angle needs to not be on a degree (or radian) scale. Since it's reversible we then don't consider difference between negative and positive values.
 
-        Args:
-            data (xr.dataArray): Raw angle data.
+    #     Args:
+    #         data (xr.dataArray): Raw angle data.
 
-        Returns:
-            xr.DataArray: Symmetric angle data. Applying the symmetry doesn't modify the coords of the dataArray.
-        """
-        return abs(np.cos(data)) # could be squared instead of abs
+    #     Returns:
+    #         xr.DataArray: Symmetric angle data. Applying the symmetry doesn't modify the coords of the dataArray.
+    #     """
+
+    #     ## check traj.coords.where(traj.coords.sel(comp=x) < 0, if false -> traj.coords * -1, if true -> nothing)
+
+    #     return abs(np.cos(data)) # could be squared instead of abs
 
     def __compute_distances(self, **pdist_kwargs) -> None:
         """Computes pairwise distances for each feature on each timestep separately. Overwrites _features.
@@ -260,6 +261,7 @@ class features( local ):
             ValueError: Catches if data doesn't have the right amount of dimensions.
             ValueError: Catches if data isn't a DataArray.
         """
+        ## might not be necessary
         if isinstance(data, xr.core.dataarray.DataArray):
             if data.ndim == n:
                 pass
@@ -321,7 +323,7 @@ class features( local ):
                 weights[i] = np.sqrt(w1[i]**2 + w2[i]**2)
         return weights
 
-    def combine_features(self, features, weights, method = "sum") -> xr.Dataset:
+    def combine_features(self, features, weights, exponent=2) -> xr.Dataset:
         """Combines the different kernel matrices of all features into 1 kernel matrix. Different combination methods are implemented
 
         Args:
@@ -333,38 +335,26 @@ class features( local ):
         TODO: check if weights name match features
         """
 
-        if method == "sum":
-            for cnt, name in enumerate(features):
-                if cnt == 0:
-                    data = weights[name] * features[name]
-                else:
-                    data += weights[name] * features[name]
-        elif method == "product": # not sure how to implement weights here.
-            for cnt, name in enumerate(features):
-                if cnt == 0:
-                    data = features[name]
-                else:
-                    data *= features[name]
-        elif method == "euclidean":
-            for cnt, name in enumerate(features):
-                if cnt == 0:
-                    data = weights[name] * features[name] ** 2
-                else:
-                    data += weights[name] * features[name] ** 2
-            data = np.sqrt(data)
+        for cnt, name in enumerate(features):
+            if cnt == 0:
+                data = abs(weights[name] * features[name]) ** exponent
+            else:
+                data += abs(weights[name] * features[name]) ** exponent
+        data = data ** (1/exponent)
         return data
 
     def pairwise_plot(self, data, ts=0):
+        # id vs id_n for one data_variable
         plt.imshow(data.isel(ts=ts), interpolation='nearest')
         plt.show()
-    ## difference between pairwise_plot and scatter_matrix?
 
-    def scatter_matrix(self, ts=0, id=0):
-        data = self._features.isel(ts = ts, id = id).drop_vars(['ts', 'id'])
-
+    def scatter_matrix(self, features, weights, ts=0, id=0):
+        # data_variables vs data_variables for all id_n
+        for name in weights:
+            features[name] = features[name] * weights[name]
+        data = features.isel(ts = ts, id = id).drop_vars(['ts', 'id'])
         scatter_matrix(data.to_dataframe())
         plt.show()
-        return data.to_dataframe()
 
     def decomposition(self, features, method='pca', **kwargs):
         """http://scikit-bio.org/docs/0.5.4/generated/generated/skbio.stats.ordination.pcoa.html

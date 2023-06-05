@@ -56,6 +56,19 @@ Here is a transcript of the arguments available when generating the cluster obje
             normalization (str, optional): Normalization technique. Choices are: min-max, max, zscores_abs and zscores_std. See methods for more details. Defaults to "max".
 ```
 
+DUMP HEADER NEEDS TO BE
+```
+  ITEM: TIMESTEP
+  0
+  ITEM: NUMBER OF ATOMS
+  3000
+  ITEM: BOX BOUNDS pp pp pp
+  -1.0000000000000000e+00 4.0000000000000000e+02
+  -1.0000000000000000e+00 4.0000000000000000e+02
+  -1.0000000000000000e+00 4.0000000000000000e+02
+  ITEM: ATOMS id type xu yu zu c_orient[1] c_orient[2] c_orient[3] c_orient[4] c_shape[1] c_shape[2] c_shape[3]
+```
+
 ## Todos
 ### General
  - Missing some formulas with reference here and there.
