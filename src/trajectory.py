@@ -66,23 +66,23 @@ class trajectory( object ): ## need object here?
         for filename in self.file_list:
             file = iol.read_file(filename)
 
-        coordinates = self.__get_variable_names(file)
+            coordinates = self.__get_variable_names(file)
 
-        for i, line in enumerate(file):
-            line = line.strip()
-            if line == "ITEM: TIMESTEP":
-                step = int(file[i+1])
-            elif line == "ITEM: NUMBER OF ATOMS":
-                nb_atoms = int(file[i+1])
-            elif line == "ITEM: BOX BOUNDS pp pp pp":
-                bounds = []
-                for j in range(len(comp)):
-                    bounds.append([ float(val) for val in file[i+j+1].strip().split() ])
-                bounds_array.append([ j[1] - j[0] for j in bounds ])
-            elif re.search("ITEM: ATOMS", str(line)):
-                # it's easier to convert numeric strings in dataframe than to a dataset (from my knowledge). So here the text for 1 timestep is sent to a dataframe, which we make a list of. Then later we transform those dataframes to a dataset (conversion is builtin the dataset object)
-                data.append(self.__lines_to_df(file[i+1:i+nb_atoms+1], coordinates))
-                timestep.append(step)
+            for i, line in enumerate(file):
+                line = line.strip()
+                if line == "ITEM: TIMESTEP":
+                    step = int(file[i+1])
+                elif line == "ITEM: NUMBER OF ATOMS":
+                    nb_atoms = int(file[i+1])
+                elif line == "ITEM: BOX BOUNDS pp pp pp":
+                    bounds = []
+                    for j in range(len(comp)):
+                        bounds.append([ float(val) for val in file[i+j+1].strip().split() ])
+                    bounds_array.append([ j[1] - j[0] for j in bounds ])
+                elif re.search("ITEM: ATOMS", str(line)):
+                    # it's easier to convert numeric strings in dataframe than to a dataset (from my knowledge). So here the text for 1 timestep is sent to a dataframe, which we make a list of. Then later we transform those dataframes to a dataset (conversion is builtin the dataset object)
+                    data.append(self.__lines_to_df(file[i+1:i+nb_atoms+1], coordinates))
+                    timestep.append(step)
 
         data = self.__dfs_to_ds(data, timestep)
         data['bounds'] = xr.DataArray(bounds_array, coords = [data.ts, comp], dims = ['ts', 'comp'])
@@ -118,10 +118,11 @@ class trajectory( object ): ## need object here?
         data = []
         type_id = None
 
-        # Checks the position of the property: type.
         for i, name in enumerate(column_names):
-            if name == 'type':
+            if name == 'type': # Checks the position of the property: type.
                 type_id = i
+            elif name in ['xu', 'yu', 'zu']: # Changes xu to x.
+                column_names[i] = name[0]
 
         if not self.exclude:
             for i in lines:
@@ -139,6 +140,7 @@ class trajectory( object ): ## need object here?
         df = df.apply(pd.to_numeric)
         df = df.set_index(['id'])
         df = df.sort_index()
+        # df = df.astype(dtype=np.double)
 
         return df
 
@@ -172,7 +174,7 @@ class trajectory( object ): ## need object here?
         # creates a list containing all the columns that are not positions
         droppers = []
         for i in data.data_vars:
-            if i not in ['xu', 'yu', 'zu']:
+            if i not in ['x', 'y', 'z']:
                 droppers.append(i)
 
         vectors = []
@@ -188,28 +190,28 @@ class trajectory( object ): ## need object here?
                     atom1 = data.drop_vars(droppers).isel(id = i+len(pattern)-1)
 
                     v = atom1 - atom0
-                    norm = np.sqrt(v.xu**2 + v.yu**2 + v.zu**2)
+                    norm = np.sqrt(v.x**2 + v.y**2 + v.z**2)
                     v /= norm
 
-                    v['coord'] = xr.DataArray( np.transpose([v.xu, v.yu, v.zu]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
+                    v['coord'] = xr.DataArray( np.transpose([v.x, v.y, v.z]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
                     v['norm'] = norm
 
-                    alpha = np.arccos(v.xu)
-                    beta = np.arccos(v.yu)
-                    gamma = np.arccos(v.zu)
+                    alpha = np.arccos(v.x)
+                    beta = np.arccos(v.y)
+                    gamma = np.arccos(v.z)
                     v['angle'] = xr.DataArray( np.transpose([alpha, beta, gamma]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
 
                     mid = (atom1 + atom0) / 2 ## should take into account all atoms in pattern and their mass
-                    x_cm = mid.xu
-                    y_cm = mid.yu
-                    z_cm = mid.zu
+                    x_cm = mid.x
+                    y_cm = mid.y
+                    z_cm = mid.z
                     v['cm'] = xr.DataArray( np.transpose([x_cm, y_cm, z_cm]), coords = [v.ts, coords], dims = ['ts', 'comp'] )
 
-                    v = v.drop_vars(['xu', 'yu', 'zu'])
+                    v = v.drop_vars(['x', 'y', 'z'])
                     v.update( {'id': ( 'id', [data.id[ i+int(len(pattern)/2) ]] )} )
                     vectors.append(v)
         self._print("\n")
-        return xr.concat(vectors, dim = 'id')
+        return xr.concat(vectors, dim = 'id', )
 
     def __is_fit_pattern(self, types, pattern) -> bool:
         """Checks if a sequence matches the pattern. If the particle sequence has exactly the same type sequence as the pattern, True will be returned, False otherwise.

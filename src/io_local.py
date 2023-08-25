@@ -4,6 +4,7 @@ import gzip as gz
 import re
 import xarray as xr
 import ast
+import numpy as np
 
 def create_file_list(path, file_pattern) -> list:
     """Creates a list of files matching file_pattern.
@@ -128,7 +129,7 @@ def is_valid_name(name) -> bool:
         flag = False
     return flag
 
-def save_xarray(ds, path, name) -> None:
+def save_xarray(ds, path, name, format_type=np.float32) -> None:
     """Saves an xarray Dataset or DataArray object to a netCDF file.
 
     Args:
@@ -140,6 +141,7 @@ def save_xarray(ds, path, name) -> None:
         path += '/'
     make_dir(path)
     name = path + name
+    ds = ds.astype(dtype=format_type)
     ds.to_netcdf(name)
 
 def save_dict(dict, path, name) -> None:

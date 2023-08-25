@@ -38,7 +38,7 @@ class cluster( features ):
 
         super().__init__(path, pattern, exclude, vector_patterns, restore_trajectory, updates, neighbors, restore_locals, vector_descriptors, voxel_descriptors, distance_descriptor, director, normalization)
 
-        self._clustraj = self.__generate_clustered_trajectory(["xu", "yu", "zu", "c_orient[*]", "c_shape[*]", "bounds"])
+        self._clustraj = self.__generate_clustered_trajectory(["x", "y", "z", "c_orient[*]", "c_shape[*]", "bounds"])
 
     def __generate_clustered_trajectory(self, vars) -> xr.Dataset:
         """Generates the clustraj dataset from the atoms dataset.
